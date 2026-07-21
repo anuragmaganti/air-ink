@@ -1,34 +1,26 @@
-Signature Webcam Draw
+# Air Ink
 
-Signature Webcam Draw is a gesture-based drawing app that lets users draw thier signature on a canvas using only their hand and export it as a PNG.
-A pinch gesture (thumb + index finger) is interpreted as pen down / pen up in real time using webcam input.
+Air Ink is a gesture-based signature studio that lets users draw on a canvas with one hand and export the result as an SVG. A webcam pinch gesture acts as pen down and pen up in real time.
 
-What it does
+## What it does
 
 - Tracks hand landmarks from a live webcam feed
-- Detects a pinch gesture to start and stop drawing
-- Draws directly onto an HTML canvas
-- Allows clearing the canvas and exporting drawings as SVG
+- Detects a thumb-and-index-finger pinch to start and stop drawing
+- Maps normalized hand coordinates onto an HTML canvas
+- Keeps camera processing local to the browser
+- Clears the current drawing or exports it as a scalable SVG
 
-How it works
+## How it works
 
-- Each video frame is processed using MediaPipe Hands
-- The distance between thumb tip (landmark 4) and index tip (landmark 8) is measured
-- When the distance crosses a threshold, drawing starts or stops
-- Drawing coordinates are mapped directly to the canvas using normalized landmarks
+Each video frame is processed by MediaPipe Tasks Vision. The app compares the distance between the thumb tip and index fingertip against the size of the detected palm, which keeps pinch detection stable across different distances from the camera. Hysteresis, smoothing, and release grace frames prevent noisy landmark readings from breaking a stroke.
 
-Technical highlights
+Continuous gesture and drawing state live in React refs so frame-by-frame updates do not re-render the component tree. React state is reserved for visible interface changes such as camera readiness, interaction status, errors, and export feedback.
 
-- Uses requestAnimationFrame for frame-accurate processing
-- Stores gesture state in refs to avoid unnecessary React re-renders
-- Applies hysteresis thresholds to stabilize pinch detection
-- Synchronizes canvas resolution with video resolution to avoid distortion
+## Tech stack
 
-Tech stack
-
-- React
+- React 19 and Vite
 - MediaPipe Tasks Vision
-- HTML Canvas
-- WebRTC (getUserMedia)
-
-Built with Codex to explore real-time gesture input, performance-aware React patterns, and canvas rendering.
+- WebRTC `getUserMedia`
+- HTML Canvas and SVG
+- Phosphor Icons
+- Vercel Analytics

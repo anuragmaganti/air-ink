@@ -1,73 +1,8 @@
-<svg width="172" height="160" viewBox="24 28 172 160" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="lensRing" x1="110" y1="60" x2="110" y2="126" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF8E8"/>
-      <stop offset="1" stop-color="#D8C6A0"/>
-    </linearGradient>
-    <linearGradient id="lensCore" x1="110" y1="77" x2="110" y2="109" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7D604B"/>
-      <stop offset="1" stop-color="#4C3327"/>
-    </linearGradient>
-  </defs>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="60" height="60" rx="18" fill="#FF5A36" />
   <path
-    d="M76 42H140C163.196 42 182 60.804 182 84V118"
-    stroke="#705341"
-    stroke-width="4.5"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M176 152C170.552 168.068 155.339 179.6 137.5 179.6H79.5C57.132 179.6 39 161.468 39 139.1V82.5C39 60.132 57.132 42 79.5 42H93"
-    stroke="#705341"
-    stroke-width="4.5"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M104 179.5H136"
-    stroke="#705341"
-    stroke-width="4.5"
-    stroke-linecap="round"
-  />
-  <circle cx="110" cy="96" r="34" fill="url(#lensRing)" stroke="#705341" stroke-width="4.5" />
-  <circle cx="110" cy="96" r="21.5" fill="none" stroke="#705341" stroke-width="4.5" />
-  <circle cx="110" cy="96" r="13" fill="url(#lensCore)" />
-  <circle cx="112" cy="92" r="3.7" fill="#FFF8ED" />
-  <circle cx="86.5" cy="82.5" r="3.2" fill="#B89E7C" stroke="#705341" stroke-width="2" />
-  <path d="M101 129H119V139H101V129Z" fill="#A39B67" stroke="#705341" stroke-width="3.5" />
-  <path
-    d="M82 145C82 136.716 88.716 130 97 130H123C131.284 130 138 136.716 138 145H82Z"
-    fill="#B4AF7A"
-    stroke="#705341"
-    stroke-width="3.5"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M46 150C61 145 76 143 92 143C101 143 109 143.5 116 144"
-    stroke="#705341"
-    stroke-width="3.6"
-    stroke-linecap="round"
-  />
-  <path
-    d="M78 172C90 172 104 162 123 145C138 131 154 121 164 120C169 119.5 172 121 172.5 124C173.5 130 166 140 155 148C148 153 146 159 151 161C154 162.5 158 160.8 163 155.8C166.6 152.2 170.2 149.8 172.6 149.8C174.9 149.8 176 151.9 176.5 155.5C177.1 159.6 181.6 160.7 190 159"
-    stroke="#E5DAA6"
-    stroke-width="9"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    opacity="0.18"
-  />
-  <path
-    d="M78 172C90 172 104 162 123 145C138 131 154 121 164 120C169 119.5 172 121 172.5 124C173.5 130 166 140 155 148C148 153 146 159 151 161C154 162.5 158 160.8 163 155.8C166.6 152.2 170.2 149.8 172.6 149.8C174.9 149.8 176 151.9 176.5 155.5C177.1 159.6 181.6 160.7 190 159"
-    stroke="#705341"
-    stroke-width="4"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M78 172C90 172 104 162 123 145C138 131 154 121 164 120C169 119.5 172 121 172.5 124C173.5 130 166 140 155 148C148 153 146 159 151 161C154 162.5 158 160.8 163 155.8C166.6 152.2 170.2 149.8 172.6 149.8C174.9 149.8 176 151.9 176.5 155.5C177.1 159.6 181.6 160.7 190 159"
-    stroke="#D7C98E"
-    stroke-width="1.4"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    d="M243.31,81.36,174.63,12.68a16,16,0,0,0-22.63,0L123.56,41.12l-58,21.76A16,16,0,0,0,55.36,75.23L34.59,199.83a4,4,0,0,0,6.77,3.49l57-57a23.85,23.85,0,0,1-2.29-12.08,24,24,0,1,1,13.6,23.4l-57,57a4,4,0,0,0,3.49,6.77l124.61-20.77a16,16,0,0,0,12.35-10.16l21.77-58.07L243.31,104a16,16,0,0,0,0-22.63ZM208,116.68,139.32,48l24-24L232,92.68Z"
+    fill="#1D1C19"
+    transform="translate(12 12) scale(0.15625)"
   />
 </svg>

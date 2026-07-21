@@ -1,18 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
-import logoMark from "./assets/webcam-sign-logo.svg";
+import {
+  ArrowCounterClockwise,
+  Camera,
+  CheckCircle,
+  DownloadSimple,
+  HandGrabbing,
+  PenNib,
+  ShieldCheck,
+  SpinnerGap,
+  VideoCameraSlash,
+} from "@phosphor-icons/react";
 import quillCursorUrl from "./assets/quill-cursor.svg";
 
 const MODEL_URL = "/models/hand_landmarker.task";
 const MEDIAPIPE_VERSION = "0.10.32";
 const MEDIAPIPE_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const STROKE_WIDTH = 2;
-const CANVAS_STROKE_COLOR = "#201a16";
+const CANVAS_STROKE_COLOR = "#1d1c19";
 const EXPORT_STROKE_COLOR = "black";
 const CURSOR_RADIUS = 5;
-const CURSOR_IDLE_COLOR = "#2f7a5f";
-const CURSOR_DRAWING_COLOR = "#201a16";
+const CURSOR_IDLE_COLOR = "#ff5a36";
+const CURSOR_DRAWING_COLOR = "#1d1c19";
 const CURSOR_QUILL_SIZE = 18;
 const CURSOR_QUILL_VIEWBOX_SIZE = 24;
 const CURSOR_QUILL_HOTSPOT_X = 20.7;
@@ -26,38 +36,28 @@ const DRAWING_RELEASE_GRACE_FRAMES = 6;
 
 const INTERACTION_COPY = {
   "loading-model": {
-    eyebrow: "Preparing surface",
-    title: "Loading hand tracking",
-    detail:
-      "Preparing the signing surface so you can write with a pinch gesture.",
+    title: "Warming up the ink",
+    detail: "The gesture engine is loading in your browser.",
   },
   "camera-off": {
-    eyebrow: "",
-    title: "Ready to sign?",
-    detail: "",
+    title: "Your mark starts here",
+    detail: "Turn on the camera, then bring one hand into view.",
   },
   "awaiting-hand": {
-    eyebrow: "Camera is live",
-    title: "Show one hand in frame",
-    detail:
-      "Keep your hand above the paper and make sure your thumb and index finger stay visible.",
+    title: "Bring one hand into view",
+    detail: "Keep your thumb and index finger visible in the camera frame.",
   },
   "tracking-lost": {
-    eyebrow: "Camera is live",
-    title: "Tracking lost",
-    detail:
-      "Move your hand back into frame and pause over the guide line to continue signing.",
+    title: "Find the frame again",
+    detail: "Move your hand back into view to continue your signature.",
   },
   ready: {
-    eyebrow: "Camera is live",
-    title: "Ready to sign",
-    detail:
-      "Pinch your thumb and index finger together to start drawing on the signature line.",
+    title: "Pinch to put ink down",
+    detail: "Touch thumb to index finger, then move your hand to write.",
   },
   drawing: {
-    eyebrow: "Camera is live",
-    title: "Signing in progress",
-    detail: "Release your pinch to lift the ink, then pinch again to continue.",
+    title: "You are signing",
+    detail: "Release the pinch to lift the ink. Pinch again to keep writing.",
   },
 };
 
@@ -78,7 +78,10 @@ function App() {
   const pinchReleaseFramesRef = useRef(0);
 
   const [cameraOn, setCameraOn] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
   const [modelReady, setModelReady] = useState(false);
+  const [modelError, setModelError] = useState(null);
   const [hasSignature, setHasSignature] = useState(false);
   const [interactionPhase, setInteractionPhase] = useState("loading-model");
   const [feedback, setFeedback] = useState(null);
@@ -87,7 +90,8 @@ function App() {
   const currentStrokeRef = useRef([]);
 
   const status = INTERACTION_COPY[interactionPhase];
-  const showEmptyState = !cameraOn && !hasSignature;
+  const showCanvasPrompt = !hasSignature;
+
   useEffect(() => {
     if (!feedback) return undefined;
 
@@ -137,15 +141,20 @@ function App() {
   }
 
   function syncCanvasSize(canvas, video) {
+    const canvasAspect = canvas.clientWidth / canvas.clientHeight;
+    const nextWidth = video.videoWidth;
+    const nextHeight = Math.round(nextWidth / canvasAspect);
+
     if (
-      canvas.width === video.videoWidth &&
-      canvas.height === video.videoHeight
+      !Number.isFinite(canvasAspect) ||
+      canvasAspect <= 0 ||
+      (canvas.width === nextWidth && canvas.height === nextHeight)
     ) {
       return;
     }
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
     redrawCanvas();
   }
 
@@ -204,6 +213,10 @@ function App() {
     return smoothedRatio;
   }
 
+  function getCanvasScale(canvas) {
+    return canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  }
+
   function resetPinchSignal() {
     smoothedPinchRatioRef.current = null;
     pinchReleaseFramesRef.current = 0;
@@ -212,7 +225,9 @@ function App() {
   function drawStroke(ctx, stroke) {
     if (stroke.length === 0) return;
 
-    ctx.lineWidth = STROKE_WIDTH;
+    const strokeWidth = STROKE_WIDTH * getCanvasScale(ctx.canvas);
+
+    ctx.lineWidth = strokeWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = CANVAS_STROKE_COLOR;
@@ -222,7 +237,7 @@ function App() {
       const [point] = stroke;
 
       ctx.beginPath();
-      ctx.arc(point.x, point.y, STROKE_WIDTH / 2, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, strokeWidth / 2, 0, Math.PI * 2);
       ctx.fill();
       return;
     }
@@ -251,13 +266,16 @@ function App() {
     if (!point || !handDetectedRef.current) return;
 
     const quillCursorImage = quillCursorImageRef.current;
+    const canvasScale = getCanvasScale(ctx.canvas);
+
     if (quillCursorImage) {
+      const quillSize = CURSOR_QUILL_SIZE * canvasScale;
       const drawX =
         (-CURSOR_QUILL_HOTSPOT_X / CURSOR_QUILL_VIEWBOX_SIZE) *
-        CURSOR_QUILL_SIZE;
+        quillSize;
       const drawY =
         (-CURSOR_QUILL_HOTSPOT_Y / CURSOR_QUILL_VIEWBOX_SIZE) *
-        CURSOR_QUILL_SIZE;
+        quillSize;
 
       ctx.save();
       ctx.translate(point.x, point.y);
@@ -267,8 +285,8 @@ function App() {
         quillCursorImage,
         drawX,
         drawY,
-        CURSOR_QUILL_SIZE,
-        CURSOR_QUILL_SIZE,
+        quillSize,
+        quillSize,
       );
       ctx.restore();
       return;
@@ -281,14 +299,14 @@ function App() {
     ctx.save();
     ctx.strokeStyle = cursorColor;
     ctx.fillStyle = cursorColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * canvasScale;
 
     ctx.beginPath();
-    ctx.arc(point.x, point.y, CURSOR_RADIUS, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, CURSOR_RADIUS * canvasScale, 0, Math.PI * 2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, 2 * canvasScale, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -362,7 +380,7 @@ function App() {
     return commands.join(" ");
   }
 
-  function buildStrokeSvg(stroke) {
+  function buildStrokeSvg(stroke, strokeWidth) {
     if (stroke.length === 0) return "";
 
     if (stroke.length === 1) {
@@ -371,13 +389,13 @@ function App() {
       return `<circle
         cx="${point.x.toFixed(2)}"
         cy="${point.y.toFixed(2)}"
-        r="${(STROKE_WIDTH / 2).toFixed(2)}"
+        r="${(strokeWidth / 2).toFixed(2)}"
         fill="${EXPORT_STROKE_COLOR}" />`;
     }
 
     return `<path d="${getStrokePathData(stroke)}"
         stroke="${EXPORT_STROKE_COLOR}"
-        stroke-width="${STROKE_WIDTH}"
+        stroke-width="${strokeWidth.toFixed(2)}"
         fill="none"
         stroke-linecap="round"
         stroke-linejoin="round" />`;
@@ -475,21 +493,56 @@ function App() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
     async function init() {
-      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
+      try {
+        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
+        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL },
+          runningMode: "VIDEO",
+          numHands: 1,
+        });
 
-      const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL },
-        runningMode: "VIDEO",
-        numHands: 1,
-      });
+        if (cancelled) {
+          handLandmarker.close?.();
+          return;
+        }
 
-      handLandmarkerRef.current = handLandmarker;
-      setModelReady(true);
-      syncInteractionPhase("camera-off");
+        handLandmarkerRef.current = handLandmarker;
+        setModelReady(true);
+        syncInteractionPhase("camera-off");
+      } catch (error) {
+        console.error("Unable to load hand tracking", error);
+
+        if (!cancelled) {
+          setModelError(
+            "Hand tracking could not load. Check your connection and refresh to try again.",
+          );
+        }
+      }
     }
 
     init();
+
+    return () => {
+      cancelled = true;
+      handLandmarkerRef.current?.close?.();
+      handLandmarkerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    return () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+
+      const stream = video?.srcObject;
+      if (stream && stream.getTracks) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   function startDetectionLoop() {
@@ -517,16 +570,49 @@ function App() {
   }
 
   async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    const video = videoRef.current;
+    if (cameraStarting || cameraOn) return;
 
-    video.srcObject = stream;
-    await video.play();
+    setCameraStarting(true);
+    setCameraError(null);
 
-    setCameraOn(true);
-    setFeedback(null);
-    syncInteractionPhase("awaiting-hand");
-    startDetectionLoop();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
+      });
+      const video = videoRef.current;
+
+      if (!video) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      video.srcObject = stream;
+      await video.play();
+
+      setCameraOn(true);
+      setFeedback(null);
+      syncInteractionPhase("awaiting-hand");
+      startDetectionLoop();
+    } catch (error) {
+      console.error("Unable to start camera", error);
+
+      const message =
+        error?.name === "NotAllowedError"
+          ? "Camera access was blocked. Allow access in your browser settings and try again."
+          : error?.name === "NotFoundError"
+            ? "No camera was found on this device."
+            : "The camera could not start. Close other camera apps and try again.";
+
+      setCameraError(message);
+      syncInteractionPhase("camera-off");
+    } finally {
+      setCameraStarting(false);
+    }
   }
 
   function stopCamera() {
@@ -546,6 +632,7 @@ function App() {
     if (video) video.srcObject = null;
 
     setCameraOn(false);
+    setCameraError(null);
     syncInteractionPhase("camera-off");
     redrawCanvas();
   }
@@ -563,8 +650,9 @@ function App() {
 
     const width = canvas.width;
     const height = canvas.height;
+    const exportStrokeWidth = STROKE_WIDTH * getCanvasScale(canvas);
     const svgElements = exportableStrokes
-      .map(buildStrokeSvg)
+      .map((stroke) => buildStrokeSvg(stroke, exportStrokeWidth))
       .filter(Boolean)
       .join("\n");
 
@@ -580,115 +668,170 @@ function App() {
     const a = document.createElement("a");
     a.href = url;
     a.download = "signature.svg";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
 
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
     showFeedback("export", "Signature exported as SVG.");
   }
 
   return (
-    <div className="app">
+    <div className="appShell">
       <header className="topbar">
-        <div className="brand">
-          <img src={logoMark} alt="Webcam Sign logo" className="logo" />
-          <div className="brandText">
-            <div className="title">Webcam Sign</div>
-          </div>
+        <div className="brand" aria-label="Air Ink home">
+          <span className="brandMark" aria-hidden="true">
+            <PenNib size={20} weight="fill" />
+          </span>
+          <div className="brandName">Air Ink</div>
         </div>
-        <div className="topbarMeta">Processed locally in your browser</div>
+        <p className="headerStatement">
+          Air Ink uses your webcam to turn your <strong>hand movement</strong> into a{" "}
+          <span className="statementFinish">crisp, downloadable signature.</span>
+        </p>
+        <div className="privacyNote">
+          <ShieldCheck size={18} weight="bold" aria-hidden="true" />
+          <span>Video stays on your device</span>
+        </div>
       </header>
 
-      <main className="content">
-        <section className="stage">
-          <div className="signatureGuide">
-            <div className="signatureGuideLabel">Sign here</div>
-            <div className="signatureGuideLine" />
-          </div>
-
-          {showEmptyState ? (
-            <div className="emptyState">
-              <div className="emptyCard">
-                {status.eyebrow ? (
-                  <div className="emptyEyebrow">{status.eyebrow}</div>
-                ) : null}
-                <h2 className="emptyTitle">{status.title}</h2>
-                {status.detail ? <p className="emptyBody">{status.detail}</p> : null}
-                <ul className="emptySteps">
-                  <li>Click Start Camera and allow camera access if prompted</li>
-                  <li>Hold one hand in frame</li>
-                  <li>Pinch your thumb and index finger together to start signing</li>
-                  <li>Keep them pinched as you write</li>
-                  <li>Release to stop</li>
-                </ul>
-              </div>
-            </div>
-          ) : null}
-
-          <canvas ref={canvasRef} className="ink" />
+      <main className="workspace">
+        <section className="introPanel" aria-labelledby="page-title">
+          <h1 id="page-title" className="heroTitle">
+            Your hand is the <em>pen.</em>
+          </h1>
         </section>
 
-        <aside className="panel">
-          <section className="panelSection">
-            <div className="sectionHeader">
-              <div className="sectionTitle">Live Preview</div>
-            </div>
-
+        <section className="cameraPanel" aria-label="Camera controls">
+          <div className="videoFrame">
             <video
               ref={videoRef}
               muted
               playsInline
               className="cameraPreview"
-              style={{ transform: "scaleX(-1)" }}
+              aria-label="Mirrored live camera preview"
             />
 
-            <div className="cameraMeta">
-              The video feed stays on this page and is only used to track your
-              hand
+            {!cameraOn ? (
+              <div className="videoPlaceholder">
+                {cameraStarting || (!modelReady && !modelError) ? (
+                  <SpinnerGap
+                    className="spinner"
+                    size={30}
+                    weight="bold"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <VideoCameraSlash size={30} weight="duotone" aria-hidden="true" />
+                )}
+                <span>
+                  {modelError
+                    ? "Tracker unavailable"
+                    : cameraStarting
+                      ? "Waiting for permission"
+                      : !modelReady
+                        ? "Loading hand tracking"
+                        : "Camera preview"}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          {modelError || cameraError ? (
+            <div className="inlineError" role="alert">
+              {modelError || cameraError}
+            </div>
+          ) : null}
+
+          {!cameraOn ? (
+            <button
+              type="button"
+              className="controlButton primary cameraAction"
+              onClick={startCamera}
+              disabled={!modelReady || cameraStarting || Boolean(modelError)}
+            >
+              {modelError ? (
+                <VideoCameraSlash size={19} weight="bold" />
+              ) : cameraStarting || !modelReady ? (
+                <SpinnerGap className="spinner" size={19} weight="bold" />
+              ) : (
+                <Camera size={19} weight="bold" />
+              )}
+              {modelError
+                ? "Tracker unavailable"
+                : cameraStarting
+                  ? "Opening camera"
+                  : modelReady
+                    ? "Start camera"
+                    : "Loading tracker"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="controlButton cameraAction"
+              onClick={stopCamera}
+            >
+              <VideoCameraSlash size={19} weight="bold" />
+              Stop camera
+            </button>
+          )}
+        </section>
+
+        <section className="stage" aria-label="Signature stage">
+          <div className="drawingSurface">
+            <div className="signatureGuide">
+              <div className="signatureGuideLabel">Sign here</div>
+              <div className="signatureGuideLine" />
             </div>
 
-            {!cameraOn ? (
-              <button
-                className="btn primary block"
-                onClick={startCamera}
-                disabled={!modelReady}
-              >
-                Start Camera
-              </button>
-            ) : (
-              <button className="btn danger block" onClick={stopCamera}>
-                Stop Camera
-              </button>
-            )}
+            {showCanvasPrompt ? (
+              <div className="canvasPrompt" role="status" aria-live="polite">
+                <div className="gestureIcon" aria-hidden="true">
+                  <HandGrabbing size={36} weight="duotone" />
+                </div>
+                <div>
+                  <h3>{modelError ? "The canvas needs the tracker" : status.title}</h3>
+                  <p>{modelError || status.detail}</p>
+                </div>
+              </div>
+            ) : null}
+
+            <canvas
+              ref={canvasRef}
+              className="ink"
+              aria-label="Signature drawing canvas"
+            />
+          </div>
+
+          <div className="actionDock">
             <button
-              className="btn block"
+              type="button"
+              className="controlButton"
               onClick={clearCanvas}
               disabled={!hasSignature}
             >
-              Clear Canvas
+              <ArrowCounterClockwise size={19} weight="bold" />
+              Clear
             </button>
-          </section>
-
-          <section className="panelSection">
-            <div className="sectionHeader">
-              <div className="sectionTitle">Export</div>
-              <div className="sectionText">
-                Download a crisp SVG file of your signature when it looks right
-              </div>
-            </div>
 
             <button
-              className="btn primary block"
+              type="button"
+              className="controlButton exportButton"
               onClick={exportSignatureAsSVG}
               disabled={!hasSignature}
             >
+              <DownloadSimple size={19} weight="bold" />
               Download SVG
             </button>
 
             {feedback?.section === "export" ? (
-              <div className="inlineNotice success">{feedback.message}</div>
+              <div className="exportFeedback" role="status">
+                <CheckCircle size={18} weight="fill" />
+                {feedback.message}
+              </div>
             ) : null}
-          </section>
-        </aside>
+          </div>
+        </section>
       </main>
     </div>
   );

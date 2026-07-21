@@ -1,27 +1,27 @@
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path
     d="M3.8 20.2Q7.9 14.1 16.2 7.3L17.8 8.9Q11 17.2 4.9 21.3Q4.15 21.55 3.65 21.05Q3.15 20.55 3.4 19.8L3.8 20.2Z"
-    fill="#F3E3C2"
-    stroke="#5A3B24"
+    fill="#FF5A36"
+    stroke="#1D1C19"
     stroke-width="1.15"
     stroke-linejoin="round"
   />
   <path
     d="M5.2 19L16.8 8"
-    stroke="#5A3B24"
+    stroke="#1D1C19"
     stroke-width="1.05"
     stroke-linecap="round"
   />
   <path
     d="M16.6 8.2L20.7 6.1L18.6 10.2Z"
-    fill="#5A3B24"
-    stroke="#5A3B24"
+    fill="#1D1C19"
+    stroke="#1D1C19"
     stroke-width="0.9"
     stroke-linejoin="round"
   />
   <path
     d="M18.1 8.5L19.4 7.2"
-    stroke="#F9F1DF"
+    stroke="#FFFDF7"
     stroke-width="0.8"
     stroke-linecap="round"
   />

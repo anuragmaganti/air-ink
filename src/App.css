@@ -19,6 +19,7 @@
   --accent: #ff5a36;
   --accent-hover: #f04f2c;
   --accent-soft: #ffe0d6;
+  --hero-scribble-color: #ff5a36;
   --radius-large: 30px;
   --radius-medium: 20px;
   --radius-control: 14px;
@@ -226,6 +227,39 @@ button:focus-visible {
   font-family: inherit;
   font-style: italic;
   font-weight: inherit;
+}
+
+.heroScribble {
+  width: min(92%, 360px);
+  height: clamp(36px, 11cqi, 50px);
+  display: block;
+  margin: clamp(8px, 2cqi, 12px) 0 0 clamp(2px, 1.5cqi, 8px);
+  overflow: visible;
+  color: var(--hero-scribble-color);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.heroScribbleShapeTablet,
+.heroScribbleShapeMobile {
+  display: none;
+}
+
+.heroScribbleStroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.heroScribbleStrokeMain {
+  stroke-width: 13;
+  opacity: 0.18;
+}
+
+.heroScribbleStrokeTexture {
+  stroke-width: 4;
+  opacity: 0.12;
 }
 
 .cameraPanel,
@@ -765,6 +799,20 @@ button:focus-visible {
     white-space: normal;
   }
 
+  .heroScribble {
+    width: min(96%, 360px);
+    height: clamp(34px, 10cqi, 48px);
+    margin-top: clamp(8px, 2cqi, 12px);
+  }
+
+  .heroScribbleShapeWide {
+    display: none;
+  }
+
+  .heroScribbleShapeTablet {
+    display: inline;
+  }
+
   .cameraPanel,
   .stage {
     align-self: start;
@@ -864,6 +912,20 @@ button:focus-visible {
   .heroLine {
     display: inline;
     white-space: inherit;
+  }
+
+  .heroScribble {
+    width: min(78%, 290px);
+    height: clamp(26px, 9cqi, 34px);
+    margin: 5px auto 0;
+  }
+
+  .heroScribbleShapeTablet {
+    display: none;
+  }
+
+  .heroScribbleShapeMobile {
+    display: inline;
   }
 
   .cameraPanel {

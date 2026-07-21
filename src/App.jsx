@@ -45,6 +45,51 @@ const INTERACTION_COPY = {
   },
 };
 
+function HeroScribble() {
+  return (
+    <svg
+      className="heroScribble"
+      viewBox="0 0 360 58"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g className="heroScribbleShape heroScribbleShapeWide">
+        <path
+          className="heroScribbleStroke heroScribbleStrokeMain"
+          d="M9 43 C32 39 43 15 64 13 C79 12 58 41 73 42 C92 43 105 11 125 13 C143 15 121 43 138 42 C157 41 168 15 186 17 C203 19 184 42 200 41 C219 40 230 19 246 21 C263 23 250 40 264 40 C286 39 311 24 351 17"
+        />
+        <path
+          className="heroScribbleStroke heroScribbleStrokeTexture"
+          d="M12 47 C36 42 48 20 66 18 C82 17 63 45 77 46 C97 46 110 17 128 18 C146 19 126 46 141 46 C161 45 173 20 190 21 C207 22 189 45 204 45 C224 44 235 24 250 25 C267 26 256 43 270 43 C291 42 315 29 348 22"
+        />
+      </g>
+
+      <g className="heroScribbleShape heroScribbleShapeTablet">
+        <path
+          className="heroScribbleStroke heroScribbleStrokeMain"
+          d="M8 44 C38 38 48 12 72 14 C87 16 65 43 81 43 C103 43 114 15 135 16 C151 17 132 43 149 43 C170 43 181 18 201 19 C217 20 201 42 217 42 C238 42 251 23 269 24 C287 25 280 39 294 38 C311 37 328 27 352 21"
+        />
+        <path
+          className="heroScribbleStroke heroScribbleStrokeTexture"
+          d="M12 48 C42 41 53 18 75 19 C91 20 71 46 85 47 C107 47 119 20 138 21 C155 22 137 46 153 47 C174 47 186 23 204 24 C222 25 207 46 222 46 C243 46 256 28 273 29 C290 30 285 43 299 42 C316 41 331 32 349 27"
+        />
+      </g>
+
+      <g className="heroScribbleShape heroScribbleShapeMobile">
+        <path
+          className="heroScribbleStroke heroScribbleStrokeMain"
+          d="M10 39 C45 36 61 19 85 19 C104 19 88 39 107 39 C131 39 145 18 168 19 C188 20 173 39 192 39 C217 39 231 22 253 23 C272 24 264 38 281 37 C303 36 322 28 350 24"
+        />
+        <path
+          className="heroScribbleStroke heroScribbleStrokeTexture"
+          d="M13 44 C48 40 65 24 88 24 C107 24 93 43 111 43 C135 43 149 23 171 24 C191 25 178 43 196 43 C221 43 235 27 256 28 C275 29 269 42 285 41 C306 40 325 33 347 29"
+        />
+      </g>
+    </svg>
+  );
+}
+
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -155,6 +200,7 @@ function App() {
               the <em>pen.</em>
             </span>
           </h1>
+          <HeroScribble />
         </section>
 
         <section className="cameraPanel" aria-label="Camera controls">

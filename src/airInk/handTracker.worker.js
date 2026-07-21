@@ -1,12 +1,8 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { getPinchMetrics, getPointerPoint } from "./gestureEngine.js";
+import { createTrackingPacket } from "./trackingPacket.js";
 
 let handLandmarker = null;
-
-function serializeLandmarks(landmarks) {
-  if (!landmarks) return null;
-
-  return landmarks.map(({ x, y, z }) => ({ x, y, z }));
-}
 
 function postWorkerError(scope, error, frame = {}) {
   self.postMessage({
@@ -39,27 +35,37 @@ self.addEventListener("message", async (event) => {
   }
 
   if (message.type === "frame") {
-    const { bitmap, frameId, runId, timestamp } = message;
+    const { aspectRatio, bitmap, frameId, runId, timestamp } = message;
     const startedAt = performance.now();
 
     try {
       if (!handLandmarker) throw new Error("Hand tracker is not initialized.");
 
       const result = handLandmarker.detectForVideo(bitmap, timestamp);
+      const landmarks = result.landmarks?.[0] ?? null;
+      const worldLandmarks = result.worldLandmarks?.[0] ?? null;
       const handedness = result.handedness?.[0]?.[0] ?? null;
-
-      self.postMessage({
-        type: "result",
-        frameId,
-        runId,
-        timestamp,
-        inferenceDuration: performance.now() - startedAt,
-        landmarks: serializeLandmarks(result.landmarks?.[0]),
-        worldLandmarks: serializeLandmarks(result.worldLandmarks?.[0]),
-        handedness: handedness
-          ? { categoryName: handedness.categoryName, score: handedness.score }
-          : null,
+      const trackingValues = createTrackingPacket({
+        pointer: getPointerPoint(landmarks),
+        pinchMetrics: getPinchMetrics(
+          landmarks,
+          worldLandmarks,
+          aspectRatio,
+        ),
+        handedness,
       });
+
+      self.postMessage(
+        {
+          type: "result",
+          frameId,
+          runId,
+          timestamp,
+          inferenceDuration: performance.now() - startedAt,
+          trackingValues,
+        },
+        [trackingValues.buffer],
+      );
     } catch (error) {
       postWorkerError("frame", error, { frameId, runId });
     } finally {

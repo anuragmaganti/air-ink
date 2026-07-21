@@ -6,7 +6,7 @@ Air Ink is an in-browser signature studio. A webcam tracks one hand, a thumb-to-
 
 The interaction is split into four layers instead of keeping camera, model, gesture, and drawing logic in the React component:
 
-1. `src/airInk/handTracker.worker.js` owns MediaPipe initialization and synchronous inference in a Web Worker.
+1. `src/airInk/handTracker.worker.js` owns MediaPipe initialization, synchronous inference, and landmark-to-pointer measurement in a Web Worker.
 2. `src/airInk/gestureEngine.js` turns landmarks into a pinch ratio, filtered pointer position, and deterministic gesture state.
 3. `src/airInk/AirInkSession.js` owns camera lifecycle, video-frame scheduling, gesture-to-stroke behavior, cursor presentation, and cleanup.
 4. `src/airInk/strokeGeometry.js` renders normalized strokes to Canvas and builds equivalent SVG paths.
@@ -22,6 +22,8 @@ React only receives low-frequency UI state: model readiness, camera state, inter
 - Camera preference: user-facing, 1280x720, 16:9, and up to an ideal 60 FPS. These are non-mandatory constraints, so the browser can select a supported fallback.
 
 `requestVideoFrameCallback` schedules work from actual decoded camera frames. The visible preview keeps the camera's selected resolution, while the inference bitmap is proportionally reduced to fit within `640x360` and is never upscaled. Only one frame can be in flight, so slow inference drops intermediate frames instead of building a stale queue. The MediaPipe worker uses the module WASM loader and keeps synchronous `detectForVideo` calls off the UI thread.
+
+MediaPipe still evaluates all landmarks, but the worker does not clone and return both 21-point arrays. It computes the pointer, pinch ratios, and handedness beside the model, then transfers one seven-value `Float64Array` to the main thread. The fixed packet is 56 bytes and retains JavaScript numeric precision for threshold comparisons.
 
 The model file is local. MediaPipe's versioned WASM runtime is fetched from jsDelivr; camera frames are transferred only from the page to the same-origin worker and are not uploaded.
 
@@ -103,7 +105,7 @@ npm run lint
 npm run build
 ```
 
-The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, responsive point filtering, bounded aspect-preserving inference frames, incremental canvas commits, FPS-aware motion continuity, teleport rejection, normalized path geometry, CSS-pixel sampling, and SVG output.
+The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, the fixed transferable tracking packet, responsive point filtering, bounded aspect-preserving inference frames, incremental canvas commits, FPS-aware motion continuity, teleport rejection, normalized path geometry, CSS-pixel sampling, and SVG output.
 
 Automated tests cannot establish the ideal thresholds for every webcam, hand shape, angle, and lighting condition. Final calibration should record real sessions and compare pinch ratio, inference time, false starts, false releases, and end-of-stroke overshoot before changing the constants.
 

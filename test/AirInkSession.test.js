@@ -5,6 +5,10 @@ import {
   getInferenceFrameSize,
 } from "../src/airInk/AirInkSession.js";
 import { GESTURE_MODE } from "../src/airInk/gestureEngine.js";
+import {
+  createTrackingPacket,
+  TRACKING_VALUE_COUNT,
+} from "../src/airInk/trackingPacket.js";
 
 function createClassList() {
   const classes = new Set();
@@ -46,34 +50,23 @@ function createCanvas() {
 }
 
 function createFrame({ pinchRatio, indexX, indexY = 0.5, timestamp }) {
-  const landmarks = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 }));
-  const worldLandmarks = Array.from({ length: 21 }, () => ({
-    x: 0,
-    y: 0,
-    z: 0,
-  }));
-
-  landmarks[0] = { x: 0.5, y: 0.8, z: 0 };
-  landmarks[5] = { x: 0.4, y: 0.55, z: 0 };
-  landmarks[9] = { x: 0.5, y: 0.5, z: 0 };
-  landmarks[17] = { x: 0.6, y: 0.55, z: 0 };
-  landmarks[4] = {
-    x: indexX + pinchRatio * 0.25,
-    y: indexY,
-    z: 0,
-  };
-  landmarks[8] = { x: indexX, y: indexY, z: 0 };
-  worldLandmarks[0] = { x: 0, y: 0, z: 0 };
-  worldLandmarks[5] = { x: -0.04, y: 0.08, z: 0 };
-  worldLandmarks[9] = { x: 0, y: 0.1, z: 0 };
-  worldLandmarks[17] = { x: 0.04, y: 0.08, z: 0 };
-  worldLandmarks[4] = { x: 0, y: 0.12, z: 0 };
-  worldLandmarks[8] = { x: pinchRatio * 0.09, y: 0.12, z: 0 };
-
   return {
-    landmarks,
-    worldLandmarks,
-    handedness: { categoryName: "Right", score: 0.99 },
+    trackingValues: createTrackingPacket({
+      pointer: { x: 1 - indexX, y: indexY },
+      pinchMetrics: {
+        ratio: pinchRatio,
+        screenRatio: pinchRatio,
+        worldRatio: pinchRatio,
+      },
+      handedness: { categoryName: "Right", score: 0.99 },
+    }),
+    timestamp,
+  };
+}
+
+function createMissingFrame(timestamp) {
+  return {
+    trackingValues: createTrackingPacket({}),
     timestamp,
   };
 }
@@ -124,7 +117,7 @@ test("session bridges noisy release and tracking frames without breaking ink", (
   assert.equal(session.gesture.mode, GESTURE_MODE.DRAWING);
   assert.equal(session.currentStroke.length, 3);
 
-  session.handleMissingHand(98);
+  session.processTrackingResult(createMissingFrame(98));
   assert.equal(session.gesture.mode, GESTURE_MODE.DRAWING);
   assert.equal(session.currentStroke.length, 3);
   assert.equal(session.diagnostics.trackingGraceActive, true);
@@ -152,8 +145,8 @@ test("session bridges noisy release and tracking frames without breaking ink", (
   session.processTrackingResult(
     createFrame({ pinchRatio: 0.24, indexX: 0.56, timestamp: 235 }),
   );
-  session.handleMissingHand(250);
-  session.handleMissingHand(351);
+  session.processTrackingResult(createMissingFrame(250));
+  session.processTrackingResult(createMissingFrame(351));
   assert.equal(session.gesture.mode, GESTURE_MODE.NO_HAND);
   assert.equal(session.strokes.length, 2);
 
@@ -226,4 +219,16 @@ test("inference frames are bounded without distortion or upscaling", () => {
     height: 240,
   });
   assert.equal(getInferenceFrameSize(0, 720), null);
+});
+
+test("tracking results use one fixed transferable numeric packet", () => {
+  const { trackingValues } = createFrame({
+    pinchRatio: 0.24,
+    indexX: 0.7,
+    timestamp: 0,
+  });
+
+  assert.ok(trackingValues instanceof Float64Array);
+  assert.equal(trackingValues.length, TRACKING_VALUE_COUNT);
+  assert.equal(trackingValues.byteLength, 56);
 });

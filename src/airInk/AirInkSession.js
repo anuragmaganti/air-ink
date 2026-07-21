@@ -3,8 +3,6 @@ import {
   createGestureState,
   GESTURE_ACTION,
   GESTURE_MODE,
-  getPinchMetrics,
-  getPointerPoint,
   OneEuroPointFilter,
   requireGestureRelease,
 } from "./gestureEngine.js";
@@ -14,6 +12,11 @@ import {
   getPointDistanceCss,
   IncrementalStrokeRenderer,
 } from "./strokeGeometry.js";
+import {
+  decodeHandedness,
+  isTrackingPacket,
+  TRACKING_VALUE,
+} from "./trackingPacket.js";
 
 const MODEL_URL = "/models/hand_landmarker.task";
 const MEDIAPIPE_VERSION = "0.10.35";
@@ -324,35 +327,51 @@ export class AirInkSession {
     this.processTrackingResult(message);
   }
 
-  processTrackingResult({ landmarks, worldLandmarks, handedness, timestamp }) {
-    if (!landmarks) {
+  processTrackingResult({ trackingValues, timestamp }) {
+    if (!isTrackingPacket(trackingValues)) {
       this.handleMissingHand(timestamp);
       return;
     }
 
-    const videoAspectRatio =
-      this.video.videoWidth > 0 && this.video.videoHeight > 0
-        ? this.video.videoWidth / this.video.videoHeight
-        : 1;
-    const pinchMetrics = getPinchMetrics(
-      landmarks,
-      worldLandmarks,
-      videoAspectRatio,
+    const pointerX = trackingValues[TRACKING_VALUE.POINTER_X];
+    const pointerY = trackingValues[TRACKING_VALUE.POINTER_Y];
+    const pinchRatio = trackingValues[TRACKING_VALUE.PINCH_RATIO];
+
+    if (
+      !Number.isFinite(pointerX) ||
+      !Number.isFinite(pointerY) ||
+      !Number.isFinite(pinchRatio)
+    ) {
+      this.handleMissingHand(timestamp);
+      return;
+    }
+
+    const rawPoint = { x: pointerX, y: pointerY };
+    const handednessName = decodeHandedness(
+      trackingValues[TRACKING_VALUE.HANDEDNESS_CODE],
     );
-    const pinchRatio = pinchMetrics.ratio;
-    const rawPoint = getPointerPoint(landmarks);
-
-    if (!Number.isFinite(pinchRatio) || !rawPoint) {
-      this.handleMissingHand(timestamp);
-      return;
-    }
+    const handednessScore =
+      trackingValues[TRACKING_VALUE.HANDEDNESS_SCORE];
 
     this.hasHand = true;
     this.hasSeenHand = true;
     this.diagnostics.lastPinchRatio = pinchRatio;
-    this.diagnostics.lastScreenPinchRatio = pinchMetrics.screenRatio;
-    this.diagnostics.lastWorldPinchRatio = pinchMetrics.worldRatio;
-    this.diagnostics.lastHandedness = handedness;
+    this.diagnostics.lastScreenPinchRatio = Number.isFinite(
+      trackingValues[TRACKING_VALUE.SCREEN_PINCH_RATIO],
+    )
+      ? trackingValues[TRACKING_VALUE.SCREEN_PINCH_RATIO]
+      : null;
+    this.diagnostics.lastWorldPinchRatio = Number.isFinite(
+      trackingValues[TRACKING_VALUE.WORLD_PINCH_RATIO],
+    )
+      ? trackingValues[TRACKING_VALUE.WORLD_PINCH_RATIO]
+      : null;
+    this.diagnostics.lastHandedness = handednessName
+      ? {
+          categoryName: handednessName,
+          score: Number.isFinite(handednessScore) ? handednessScore : null,
+        }
+      : null;
 
     const elapsedSinceRawPoint =
       this.previousRawTimestamp == null
@@ -531,6 +550,10 @@ export class AirInkSession {
       this.video.videoWidth,
       this.video.videoHeight,
     );
+    const sourceAspectRatio =
+      this.video.videoWidth > 0 && this.video.videoHeight > 0
+        ? this.video.videoWidth / this.video.videoHeight
+        : 1;
     const bitmapPromise = createInferenceBitmap(this.video, inferenceSize);
 
     bitmapPromise
@@ -560,6 +583,7 @@ export class AirInkSession {
             frameId,
             runId,
             timestamp: monotonicTimestamp,
+            aspectRatio: sourceAspectRatio,
           },
           [bitmap],
         );

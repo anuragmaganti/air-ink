@@ -3,7 +3,7 @@ import {
   createGestureState,
   GESTURE_ACTION,
   GESTURE_MODE,
-  getPinchRatio,
+  getPinchMetrics,
   getPointerPoint,
   OneEuroPointFilter,
   requireGestureRelease,
@@ -21,13 +21,35 @@ const MEDIAPIPE_VERSION = "0.10.35";
 const MEDIAPIPE_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const STROKE_WIDTH_CSS = 2;
 const MIN_POINT_DISTANCE_CSS = 0.75;
-const MAX_TRACKING_JUMP = 0.18;
+const MIN_TRACKING_JUMP = 0.16;
+const MAX_TRACKING_JUMP = 0.38;
+const TRACKING_SPEED_ALLOWANCE = 3;
 const CURSOR_SIZE = 18;
 const CURSOR_VIEWBOX_SIZE = 24;
 const CURSOR_HOTSPOT_X = 20.7;
 const CURSOR_HOTSPOT_Y = 6.1;
 
 const NOOP = () => {};
+
+function getAllowedTrackingJump(elapsedMs) {
+  const safeElapsedSeconds =
+    Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs / 1000 : 0;
+
+  return Math.min(
+    MAX_TRACKING_JUMP,
+    MIN_TRACKING_JUMP + safeElapsedSeconds * TRACKING_SPEED_ALLOWANCE,
+  );
+}
+
+function getPendingGesturePhase(gesture) {
+  if (gesture.missingStartedAt != null) return "tracking-grace";
+  if (gesture.pinchStartedAt != null) return "pinch-confirmation";
+  if (gesture.releaseStartedAt == null) return null;
+
+  return gesture.mode === GESTURE_MODE.NEEDS_RELEASE
+    ? "rearm-confirmation"
+    : "release-confirmation";
+}
 
 function getCameraErrorMessage(error) {
   if (error?.name === "NotAllowedError") {
@@ -88,6 +110,7 @@ export class AirInkSession {
     this.hasSeenHand = false;
     this.hasHand = false;
     this.previousRawPoint = null;
+    this.previousRawTimestamp = null;
     this.hasSignature = false;
     this.strokes = [];
     this.currentStroke = [];
@@ -95,9 +118,13 @@ export class AirInkSession {
       processedFrames: 0,
       lastInferenceDuration: null,
       lastPinchRatio: null,
+      lastScreenPinchRatio: null,
+      lastWorldPinchRatio: null,
       lastHandedness: null,
       estimatedInferenceFps: null,
       gestureMode: GESTURE_MODE.NO_HAND,
+      gesturePending: null,
+      trackingGraceActive: false,
     };
     this.lastResultReceivedAt = null;
   }
@@ -155,6 +182,13 @@ export class AirInkSession {
   setInteractionPhase(phase) {
     if (this.destroyed) return;
     this.onInteractionPhase(phase);
+  }
+
+  syncGestureDiagnostics() {
+    this.diagnostics.gestureMode = this.gesture.mode;
+    this.diagnostics.gesturePending = getPendingGesturePhase(this.gesture);
+    this.diagnostics.trackingGraceActive =
+      this.gesture.missingStartedAt != null;
   }
 
   syncHasSignature() {
@@ -232,35 +266,52 @@ export class AirInkSession {
 
   processTrackingResult({ landmarks, worldLandmarks, handedness, timestamp }) {
     if (!landmarks) {
-      this.handleMissingHand();
+      this.handleMissingHand(timestamp);
       return;
     }
 
-    const pinchRatio = getPinchRatio(landmarks, worldLandmarks);
+    const videoAspectRatio =
+      this.video.videoWidth > 0 && this.video.videoHeight > 0
+        ? this.video.videoWidth / this.video.videoHeight
+        : 1;
+    const pinchMetrics = getPinchMetrics(
+      landmarks,
+      worldLandmarks,
+      videoAspectRatio,
+    );
+    const pinchRatio = pinchMetrics.ratio;
     const rawPoint = getPointerPoint(landmarks);
 
     if (!Number.isFinite(pinchRatio) || !rawPoint) {
-      this.handleMissingHand();
+      this.handleMissingHand(timestamp);
       return;
     }
 
     this.hasHand = true;
     this.hasSeenHand = true;
     this.diagnostics.lastPinchRatio = pinchRatio;
+    this.diagnostics.lastScreenPinchRatio = pinchMetrics.screenRatio;
+    this.diagnostics.lastWorldPinchRatio = pinchMetrics.worldRatio;
     this.diagnostics.lastHandedness = handedness;
 
+    const elapsedSinceRawPoint =
+      this.previousRawTimestamp == null
+        ? null
+        : timestamp - this.previousRawTimestamp;
     const hasTrackingJump =
       this.gesture.mode === GESTURE_MODE.DRAWING &&
       this.previousRawPoint &&
-      getPointDistance(this.previousRawPoint, rawPoint) > MAX_TRACKING_JUMP;
+      getPointDistance(this.previousRawPoint, rawPoint) >
+        getAllowedTrackingJump(elapsedSinceRawPoint);
     this.previousRawPoint = rawPoint;
+    this.previousRawTimestamp = timestamp;
 
     if (hasTrackingJump) {
       this.finishCurrentStroke();
       this.gesture = requireGestureRelease();
       this.pointFilter.reset();
       const resetPoint = this.pointFilter.filter(rawPoint, timestamp);
-      this.diagnostics.gestureMode = this.gesture.mode;
+      this.syncGestureDiagnostics();
       this.setCursor(resetPoint, false);
       this.setInteractionPhase("release-to-arm");
       return;
@@ -271,9 +322,10 @@ export class AirInkSession {
     const transition = advanceGesture(this.gesture, {
       hasHand: true,
       pinchRatio,
+      timestamp,
     });
     this.gesture = transition.state;
-    this.diagnostics.gestureMode = this.gesture.mode;
+    this.syncGestureDiagnostics();
 
     if (transition.action === GESTURE_ACTION.START) {
       this.currentStroke = [point];
@@ -296,7 +348,10 @@ export class AirInkSession {
       this.finishCurrentStroke();
     }
 
-    this.setCursor(point, this.gesture.mode === GESTURE_MODE.DRAWING);
+    const isPuttingDownInk =
+      this.gesture.mode === GESTURE_MODE.DRAWING &&
+      this.gesture.releaseStartedAt == null;
+    this.setCursor(point, isPuttingDownInk);
 
     if (this.gesture.mode === GESTURE_MODE.NEEDS_RELEASE) {
       this.setInteractionPhase("release-to-arm");
@@ -307,22 +362,32 @@ export class AirInkSession {
     }
   }
 
-  handleMissingHand() {
+  handleMissingHand(timestamp = performance.now()) {
     const transition = advanceGesture(this.gesture, {
       hasHand: false,
       pinchRatio: null,
+      timestamp,
     });
 
     if (transition.action === GESTURE_ACTION.END) this.finishCurrentStroke();
 
     this.gesture = transition.state;
     this.hasHand = false;
+    this.diagnostics.lastPinchRatio = null;
+    this.diagnostics.lastScreenPinchRatio = null;
+    this.diagnostics.lastWorldPinchRatio = null;
+    this.diagnostics.lastHandedness = null;
+    this.syncGestureDiagnostics();
+
+    if (this.gesture.mode === GESTURE_MODE.DRAWING) {
+      this.setInteractionPhase("drawing");
+      return;
+    }
+
     this.previousRawPoint = null;
+    this.previousRawTimestamp = null;
     this.pointFilter.reset();
     this.hideCursor();
-    this.diagnostics.lastPinchRatio = null;
-    this.diagnostics.lastHandedness = null;
-    this.diagnostics.gestureMode = this.gesture.mode;
     this.setInteractionPhase(
       this.hasSeenHand ? "tracking-lost" : "awaiting-hand",
     );
@@ -485,11 +550,12 @@ export class AirInkSession {
       this.hasSeenHand = false;
       this.hasHand = false;
       this.previousRawPoint = null;
+      this.previousRawTimestamp = null;
       this.lastVideoTime = -1;
       this.lastSubmittedTimestamp = -1;
       this.lastResultReceivedAt = null;
       this.diagnostics.estimatedInferenceFps = null;
-      this.diagnostics.gestureMode = this.gesture.mode;
+      this.syncGestureDiagnostics();
 
       const [videoTrack] = stream.getVideoTracks();
       if (videoTrack) {
@@ -555,11 +621,14 @@ export class AirInkSession {
     this.hasSeenHand = false;
     this.hasHand = false;
     this.previousRawPoint = null;
+    this.previousRawTimestamp = null;
     this.lastResultReceivedAt = null;
     this.diagnostics.lastPinchRatio = null;
+    this.diagnostics.lastScreenPinchRatio = null;
+    this.diagnostics.lastWorldPinchRatio = null;
     this.diagnostics.lastHandedness = null;
     this.diagnostics.estimatedInferenceFps = null;
-    this.diagnostics.gestureMode = this.gesture.mode;
+    this.syncGestureDiagnostics();
     this.hideCursor();
     this.setInteractionPhase("camera-off");
     this.emitCameraState();
@@ -573,7 +642,7 @@ export class AirInkSession {
 
     if (this.cameraOn && this.hasHand) {
       this.gesture = requireGestureRelease();
-      this.diagnostics.gestureMode = this.gesture.mode;
+      this.syncGestureDiagnostics();
       this.setInteractionPhase("release-to-arm");
       this.cursor.classList.remove("isDrawing");
     }

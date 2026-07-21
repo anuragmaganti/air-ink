@@ -18,7 +18,7 @@ React only receives low-frequency UI state: model readiness, camera state, inter
 - Package: `@mediapipe/tasks-vision` 0.10.35.
 - Model: Google's float16 Hand Landmarker v1 task, stored locally at `public/models/hand_landmarker.task`.
 - Output: 21 normalized image landmarks, 21 world landmarks in meters, and handedness for one hand.
-- Confidence configuration: `0.65` detection, `0.55` hand presence, and `0.55` tracking.
+- Confidence configuration: MediaPipe's `0.5` defaults for detection, hand presence, and tracking.
 - Camera preference: user-facing, 1280x720, 16:9, and up to an ideal 60 FPS. These are non-mandatory constraints, so the browser can select a supported fallback.
 
 `requestVideoFrameCallback` schedules work from actual decoded camera frames. Only one frame can be in flight, so slow inference drops intermediate frames instead of building a stale queue. The MediaPipe worker uses the module WASM loader and keeps synchronous `detectForVideo` calls off the UI thread.
@@ -27,7 +27,7 @@ The model file is local. MediaPipe's versioned WASM runtime is fetched from jsDe
 
 ## Pinch behavior
 
-Pinch detection uses 3D world landmarks when available. This prevents fingertips that overlap in the 2D image but remain separated in depth from being treated as contact.
+Pinch detection measures the visible distance between thumb tip landmark `4` and index tip landmark `8`. Image-space `x` is corrected for the camera aspect ratio before distance is measured, so a horizontal gap and vertical gap have comparable physical meaning on a 16:9 frame. MediaPipe world landmarks remain in diagnostics and act as a fallback only if image landmarks are invalid; monocular depth estimates do not gate the interaction.
 
 The normalized signal is:
 
@@ -39,11 +39,21 @@ pinch ratio = distance(thumb tip 4, index tip 8)
 
 The palm-size denominator makes the signal stable as the hand moves toward or away from the camera.
 
-- Pen down at a ratio of `0.20` or lower.
-- Pen up at a ratio of `0.32` or higher.
+- Pen-down candidate at a ratio of `0.30` or lower.
+- Pen-up candidate at a ratio of `0.46` or higher.
 - Values between those thresholds preserve the current state.
 
-This is a Schmitt-trigger style hysteresis rule. Pen up happens on the first processed result over the release threshold. There are no grace frames, frame-count delays, or smoothed pinch values.
+This is a Schmitt-trigger style hysteresis rule with time-based confirmation rather than frame counts:
+
+- Contact must remain below the pen-down threshold for `20ms` before a stroke starts.
+- Release must remain above the pen-up threshold for `32ms` before the stroke ends.
+- Ink freezes during release confirmation, preventing an opening hand from adding a tail.
+- A missing or invalid hand result pauses the stroke for up to `100ms`; reacquisition within that window continues the same stroke.
+- Rearming after loss, Clear, or a tracking jump requires a visibly open pinch for `40ms`.
+
+These windows are long enough to reject one noisy inference result while staying below a perceptible click delay. They are based on elapsed media timestamps, so behavior is consistent at different inference frame rates.
+
+Once confirmation begins, ratios in the middle hysteresis band keep accumulating evidence. Only a clear opposite gesture cancels the candidate. This prevents small landmark oscillations from repeatedly restarting the timer.
 
 The gesture state machine is:
 
@@ -51,7 +61,9 @@ The gesture state machine is:
 no hand -> needs release -> ready -> drawing
     ^          |             ^          |
     |          +-- open -----+-- release+
-    +------------- tracking loss -------+
+    +---- sustained tracking loss -------+
+                                  |
+                       brief loss +-> drawing paused
 ```
 
 After tracking loss, a jump, or Clear, the user must visibly open the pinch before drawing again. This prevents a still-pinched reacquired hand from drawing a long connection across the canvas.
@@ -67,14 +79,15 @@ Additional safeguards:
 - Mirrored `x` coordinates match the mirrored camera preview.
 - Points are stored from `0..1`, independent of Canvas pixel dimensions.
 - Samples closer than `0.75` displayed pixels are ignored to suppress stationary jitter and duplicate points.
-- A normalized jump over `0.18` ends the stroke and requires release instead of drawing a connector.
+- Tracking-jump tolerance grows from `0.16` to at most `0.38` normalized units based on elapsed frame time. This permits legitimate fast motion at low FPS while still rejecting a one-frame teleport.
 - Canvas resolution follows its displayed size and device pixel ratio, capped at 2x for a quality/performance balance.
 - Canvas and SVG use the same quadratic smoothing geometry, round caps, round joins, and CSS-equivalent stroke width.
 - The quill cursor is a separate compositor layer, so hover movement does not clear and redraw all historical ink.
 
 ## Failure and cleanup behavior
 
-- No hand: end the current stroke immediately and hide the cursor.
+- Brief hand loss: pause point collection and keep the current stroke alive for `100ms`.
+- Sustained hand loss: end the stroke, hide the cursor, and require an open pinch after reacquisition.
 - Tracking reacquisition: require an open pinch before rearming.
 - Camera stop or stream end: cancel frame callbacks, finalize the stroke, stop media tracks, reset gesture state, and preserve completed ink.
 - Worker frame failure: stop the camera and expose a retryable error.
@@ -89,7 +102,7 @@ npm run lint
 npm run build
 ```
 
-The Node tests cover immediate release, hysteresis, tracking-loss rearming, 3D pinch measurement, index-tip mapping, normalized path geometry, CSS-pixel sampling, and SVG output.
+The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, FPS-aware motion continuity, teleport rejection, index-tip mapping, normalized path geometry, CSS-pixel sampling, and SVG output.
 
 Automated tests cannot establish the ideal thresholds for every webcam, hand shape, angle, and lighting condition. Final calibration should record real sessions and compare pinch ratio, inference time, false starts, false releases, and end-of-stroke overshoot before changing the constants.
 

@@ -27,9 +27,9 @@ self.addEventListener("message", async (event) => {
         baseOptions: { modelAssetPath: message.modelUrl },
         runningMode: "VIDEO",
         numHands: 1,
-        minHandDetectionConfidence: 0.65,
-        minHandPresenceConfidence: 0.55,
-        minTrackingConfidence: 0.55,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
       self.postMessage({ type: "ready" });
     } catch (error) {

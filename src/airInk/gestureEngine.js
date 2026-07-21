@@ -13,8 +13,12 @@ export const GESTURE_ACTION = Object.freeze({
 });
 
 export const DEFAULT_GESTURE_CONFIG = Object.freeze({
-  pinchStartRatio: 0.2,
-  pinchReleaseRatio: 0.32,
+  pinchStartRatio: 0.3,
+  pinchReleaseRatio: 0.46,
+  pinchStartHoldMs: 20,
+  pinchReleaseHoldMs: 32,
+  rearmHoldMs: 40,
+  handLossGraceMs: 100,
 });
 
 const LANDMARK = Object.freeze({
@@ -27,6 +31,7 @@ const LANDMARK = Object.freeze({
 });
 
 const MIN_HAND_SCALE = 0.0001;
+const DEFAULT_FRAME_DURATION_MS = 1000 / 60;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -49,7 +54,16 @@ export function getLandmarkDistance3D(a, b) {
   return Math.hypot(dx, dy, dz);
 }
 
-function calculatePinchRatio(source) {
+export function getLandmarkDistance2D(a, b, aspectRatio = 1) {
+  const safeAspectRatio =
+    Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 1;
+  const dx = (a.x - b.x) * safeAspectRatio;
+  const dy = a.y - b.y;
+
+  return Math.hypot(dx, dy);
+}
+
+function calculatePinchRatio(source, distance) {
   if (!Array.isArray(source) || source.length < 21) return null;
 
   const thumbTip = source[LANDMARK.THUMB_TIP];
@@ -67,9 +81,9 @@ function calculatePinchRatio(source) {
     return null;
   }
 
-  const pinchDistance = getLandmarkDistance3D(thumbTip, indexTip);
-  const palmWidth = getLandmarkDistance3D(indexMcp, pinkyMcp);
-  const palmLength = getLandmarkDistance3D(wrist, middleMcp);
+  const pinchDistance = distance(thumbTip, indexTip);
+  const palmWidth = distance(indexMcp, pinkyMcp);
+  const palmLength = distance(wrist, middleMcp);
   const handScale = (palmWidth + palmLength) / 2;
 
   if (!Number.isFinite(handScale) || handScale < MIN_HAND_SCALE) return null;
@@ -77,8 +91,26 @@ function calculatePinchRatio(source) {
   return pinchDistance / handScale;
 }
 
-export function getPinchRatio(landmarks, worldLandmarks) {
-  return calculatePinchRatio(worldLandmarks) ?? calculatePinchRatio(landmarks);
+export function getPinchMetrics(landmarks, worldLandmarks, aspectRatio = 1) {
+  const screenRatio = calculatePinchRatio(landmarks, (a, b) =>
+    getLandmarkDistance2D(a, b, aspectRatio),
+  );
+  const worldRatio = calculatePinchRatio(
+    worldLandmarks,
+    getLandmarkDistance3D,
+  );
+
+  return {
+    // Screen-space contact matches what the user sees. Monocular world depth is
+    // useful telemetry, but is too noisy to gate a binary pinch interaction.
+    ratio: screenRatio ?? worldRatio,
+    screenRatio,
+    worldRatio,
+  };
+}
+
+export function getPinchRatio(landmarks, worldLandmarks, aspectRatio = 1) {
+  return getPinchMetrics(landmarks, worldLandmarks, aspectRatio).ratio;
 }
 
 export function getPointerPoint(landmarks) {
@@ -91,12 +123,34 @@ export function getPointerPoint(landmarks) {
   };
 }
 
-export function createGestureState(mode = GESTURE_MODE.NO_HAND) {
-  return { mode };
+export function createGestureState(mode = GESTURE_MODE.NO_HAND, pending = {}) {
+  return {
+    mode,
+    pinchStartedAt: pending.pinchStartedAt ?? null,
+    releaseStartedAt: pending.releaseStartedAt ?? null,
+    missingStartedAt: pending.missingStartedAt ?? null,
+    lastTimestamp: pending.lastTimestamp ?? null,
+  };
 }
 
 export function requireGestureRelease() {
   return createGestureState(GESTURE_MODE.NEEDS_RELEASE);
+}
+
+function getObservationTimestamp(state, observation) {
+  if (Number.isFinite(observation.timestamp)) return observation.timestamp;
+  return (state.lastTimestamp ?? 0) + DEFAULT_FRAME_DURATION_MS;
+}
+
+function hasElapsed(startedAt, timestamp, duration) {
+  return Number.isFinite(startedAt) && timestamp - startedAt >= duration;
+}
+
+function transition(mode, action, timestamp, pending = {}) {
+  return {
+    state: createGestureState(mode, { ...pending, lastTimestamp: timestamp }),
+    action,
+  };
 }
 
 export function advanceGesture(
@@ -105,64 +159,159 @@ export function advanceGesture(
   config = DEFAULT_GESTURE_CONFIG,
 ) {
   const wasDrawing = state.mode === GESTURE_MODE.DRAWING;
+  const timestamp = getObservationTimestamp(state, observation);
   const hasUsableHand =
     observation.hasHand && Number.isFinite(observation.pinchRatio);
 
   if (!hasUsableHand) {
-    return {
-      state: createGestureState(GESTURE_MODE.NO_HAND),
-      action: wasDrawing ? GESTURE_ACTION.END : GESTURE_ACTION.NONE,
-    };
+    if (wasDrawing) {
+      const missingStartedAt = state.missingStartedAt ?? timestamp;
+
+      if (
+        !hasElapsed(
+          missingStartedAt,
+          timestamp,
+          config.handLossGraceMs,
+        )
+      ) {
+        return transition(
+          GESTURE_MODE.DRAWING,
+          GESTURE_ACTION.NONE,
+          timestamp,
+          { missingStartedAt },
+        );
+      }
+
+      return transition(
+        GESTURE_MODE.NO_HAND,
+        GESTURE_ACTION.END,
+        timestamp,
+      );
+    }
+
+    return transition(
+      GESTURE_MODE.NO_HAND,
+      GESTURE_ACTION.NONE,
+      timestamp,
+    );
   }
 
   const { pinchRatio } = observation;
 
   switch (state.mode) {
     case GESTURE_MODE.NO_HAND:
-      return {
-        state: createGestureState(
-          pinchRatio >= config.pinchReleaseRatio
-            ? GESTURE_MODE.READY
-            : GESTURE_MODE.NEEDS_RELEASE,
-        ),
-        action: GESTURE_ACTION.NONE,
-      };
+      return transition(
+        pinchRatio >= config.pinchReleaseRatio
+          ? GESTURE_MODE.READY
+          : GESTURE_MODE.NEEDS_RELEASE,
+        GESTURE_ACTION.NONE,
+        timestamp,
+      );
 
-    case GESTURE_MODE.NEEDS_RELEASE:
-      return {
-        state: createGestureState(
-          pinchRatio >= config.pinchReleaseRatio
-            ? GESTURE_MODE.READY
-            : GESTURE_MODE.NEEDS_RELEASE,
-        ),
-        action: GESTURE_ACTION.NONE,
-      };
+    case GESTURE_MODE.NEEDS_RELEASE: {
+      const hasPendingRelease = state.releaseStartedAt != null;
+      const clearlyPinched = pinchRatio <= config.pinchStartRatio;
+      const clearlyOpen = pinchRatio >= config.pinchReleaseRatio;
 
-    case GESTURE_MODE.READY:
-      if (pinchRatio <= config.pinchStartRatio) {
-        return {
-          state: createGestureState(GESTURE_MODE.DRAWING),
-          action: GESTURE_ACTION.START,
-        };
+      if ((!hasPendingRelease && !clearlyOpen) || clearlyPinched) {
+        return transition(
+          GESTURE_MODE.NEEDS_RELEASE,
+          GESTURE_ACTION.NONE,
+          timestamp,
+        );
       }
 
-      return { state, action: GESTURE_ACTION.NONE };
-
-    case GESTURE_MODE.DRAWING:
-      if (pinchRatio >= config.pinchReleaseRatio) {
-        return {
-          state: createGestureState(GESTURE_MODE.READY),
-          action: GESTURE_ACTION.END,
-        };
+      const releaseStartedAt = state.releaseStartedAt ?? timestamp;
+      if (hasElapsed(releaseStartedAt, timestamp, config.rearmHoldMs)) {
+        return transition(
+          GESTURE_MODE.READY,
+          GESTURE_ACTION.NONE,
+          timestamp,
+        );
       }
 
-      return { state, action: GESTURE_ACTION.MOVE };
+      return transition(
+        GESTURE_MODE.NEEDS_RELEASE,
+        GESTURE_ACTION.NONE,
+        timestamp,
+        { releaseStartedAt },
+      );
+    }
+
+    case GESTURE_MODE.READY: {
+      const hasPendingPinch = state.pinchStartedAt != null;
+      const clearlyPinched = pinchRatio <= config.pinchStartRatio;
+      const clearlyOpen = pinchRatio >= config.pinchReleaseRatio;
+
+      if ((!hasPendingPinch && !clearlyPinched) || clearlyOpen) {
+        return transition(
+          GESTURE_MODE.READY,
+          GESTURE_ACTION.NONE,
+          timestamp,
+        );
+      }
+
+      const pinchStartedAt = state.pinchStartedAt ?? timestamp;
+      if (hasElapsed(pinchStartedAt, timestamp, config.pinchStartHoldMs)) {
+        return transition(
+          GESTURE_MODE.DRAWING,
+          GESTURE_ACTION.START,
+          timestamp,
+        );
+      }
+
+      return transition(
+        GESTURE_MODE.READY,
+        GESTURE_ACTION.NONE,
+        timestamp,
+        { pinchStartedAt },
+      );
+    }
+
+    case GESTURE_MODE.DRAWING: {
+      const hasPendingRelease = state.releaseStartedAt != null;
+      const clearlyPinched = pinchRatio <= config.pinchStartRatio;
+      const clearlyOpen = pinchRatio >= config.pinchReleaseRatio;
+
+      if ((!hasPendingRelease && !clearlyOpen) || clearlyPinched) {
+        return transition(
+          GESTURE_MODE.DRAWING,
+          GESTURE_ACTION.MOVE,
+          timestamp,
+        );
+      }
+
+      const releaseStartedAt = state.releaseStartedAt ?? timestamp;
+      if (
+        hasElapsed(
+          releaseStartedAt,
+          timestamp,
+          config.pinchReleaseHoldMs,
+        )
+      ) {
+        return transition(
+          GESTURE_MODE.READY,
+          GESTURE_ACTION.END,
+          timestamp,
+        );
+      }
+
+      // Freeze ink while release is being confirmed. If the next sample is
+      // pinched again, drawing resumes without a broken stroke or a tail.
+      return transition(
+        GESTURE_MODE.DRAWING,
+        GESTURE_ACTION.NONE,
+        timestamp,
+        { releaseStartedAt },
+      );
+    }
 
     default:
-      return {
-        state: createGestureState(GESTURE_MODE.NO_HAND),
-        action: wasDrawing ? GESTURE_ACTION.END : GESTURE_ACTION.NONE,
-      };
+      return transition(
+        GESTURE_MODE.NO_HAND,
+        wasDrawing ? GESTURE_ACTION.END : GESTURE_ACTION.NONE,
+        timestamp,
+      );
   }
 }
 

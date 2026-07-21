@@ -325,7 +325,7 @@ function lowPass(previous, next, alpha) {
 }
 
 export class OneEuroPointFilter {
-  constructor({ minCutoff = 3.5, beta = 1.2, derivativeCutoff = 1 } = {}) {
+  constructor({ minCutoff = 6, beta = 2.5, derivativeCutoff = 1.5 } = {}) {
     this.minCutoff = minCutoff;
     this.beta = beta;
     this.derivativeCutoff = derivativeCutoff;

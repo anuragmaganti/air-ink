@@ -21,7 +21,7 @@ React only receives low-frequency UI state: model readiness, camera state, inter
 - Confidence configuration: MediaPipe's `0.5` defaults for detection, hand presence, and tracking.
 - Camera preference: user-facing, 1280x720, 16:9, and up to an ideal 60 FPS. These are non-mandatory constraints, so the browser can select a supported fallback.
 
-`requestVideoFrameCallback` schedules work from actual decoded camera frames. Only one frame can be in flight, so slow inference drops intermediate frames instead of building a stale queue. The MediaPipe worker uses the module WASM loader and keeps synchronous `detectForVideo` calls off the UI thread.
+`requestVideoFrameCallback` schedules work from actual decoded camera frames. The visible preview keeps the camera's selected resolution, while the inference bitmap is proportionally reduced to fit within `640x360` and is never upscaled. Only one frame can be in flight, so slow inference drops intermediate frames instead of building a stale queue. The MediaPipe worker uses the module WASM loader and keeps synchronous `detectForVideo` calls off the UI thread.
 
 The model file is local. MediaPipe's versioned WASM runtime is fetched from jsDelivr; camera frames are transferred only from the page to the same-origin worker and are not uploaded.
 
@@ -72,7 +72,7 @@ After tracking loss, a jump, or Clear, the user must visibly open the pinch befo
 
 The index fingertip is the pen position. The thumb only controls the pinch. This avoids the old behavior where opening the thumb moved a thumb/index midpoint and produced trailing ink during release.
 
-Pointer coordinates use a One Euro filter. It applies more smoothing near rest and less smoothing during fast movement. Pinch detection bypasses this filter, so pointer polish cannot delay pen up.
+Pointer coordinates use a One Euro filter tuned with a `6` minimum cutoff, `2.5` speed coefficient, and `1.5` derivative cutoff. It still suppresses near-rest landmark noise but follows intentional movement more aggressively than the original filter. Pinch detection bypasses this filter, so pointer polish cannot delay pen up. Cursor transforms are applied immediately rather than animated toward each sample.
 
 Additional safeguards:
 
@@ -81,6 +81,7 @@ Additional safeguards:
 - Samples closer than `0.75` displayed pixels are ignored to suppress stationary jitter and duplicate points.
 - Tracking-jump tolerance grows from `0.16` to at most `0.38` normalized units based on elapsed frame time. This permits legitimate fast motion at low FPS while still rejecting a one-frame teleport.
 - Canvas resolution follows its displayed size and device pixel ratio, capped at 2x for a quality/performance balance.
+- Two stacked canvases render ink incrementally. Stable quadratic segments are committed once to the base layer; only the short provisional tail is cleared and redrawn for each point. Resize remains a safe full-redraw path from normalized stroke data.
 - Canvas and SVG use the same quadratic smoothing geometry, round caps, round joins, and CSS-equivalent stroke width.
 - The quill cursor is a separate compositor layer, so hover movement does not clear and redraw all historical ink.
 
@@ -102,7 +103,7 @@ npm run lint
 npm run build
 ```
 
-The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, FPS-aware motion continuity, teleport rejection, index-tip mapping, normalized path geometry, CSS-pixel sampling, and SVG output.
+The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, responsive point filtering, bounded aspect-preserving inference frames, incremental canvas commits, FPS-aware motion continuity, teleport rejection, normalized path geometry, CSS-pixel sampling, and SVG output.
 
 Automated tests cannot establish the ideal thresholds for every webcam, hand shape, angle, and lighting condition. Final calibration should record real sessions and compare pinch ratio, inference time, false starts, false releases, and end-of-stroke overshoot before changing the constants.
 

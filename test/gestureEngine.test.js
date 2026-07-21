@@ -9,6 +9,7 @@ import {
   getPinchMetrics,
   getPinchRatio,
   getPointerPoint,
+  OneEuroPointFilter,
 } from "../src/airInk/gestureEngine.js";
 
 function createLandmarks() {
@@ -135,5 +136,18 @@ describe("hand measurements", () => {
     landmarks[8] = { x: 0.75, y: 0.4, z: 0 };
 
     assert.deepEqual(getPointerPoint(landmarks), { x: 0.25, y: 0.4 });
+  });
+});
+
+describe("pointer filtering", () => {
+  test("responds quickly while still smoothing landmark movement", () => {
+    const filter = new OneEuroPointFilter();
+
+    filter.filter({ x: 0, y: 0 }, 0);
+    const firstMove = filter.filter({ x: 0.1, y: 0 }, 1000 / 60);
+    const secondMove = filter.filter({ x: 0.2, y: 0 }, 2000 / 60);
+
+    assert.ok(firstMove.x > 0.04 && firstMove.x < 0.1);
+    assert.ok(secondMove.x > 0.11 && secondMove.x < 0.2);
   });
 });

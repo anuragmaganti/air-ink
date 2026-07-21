@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AirInkSession } from "../src/airInk/AirInkSession.js";
+import {
+  AirInkSession,
+  getInferenceFrameSize,
+} from "../src/airInk/AirInkSession.js";
 import { GESTURE_MODE } from "../src/airInk/gestureEngine.js";
 
 function createClassList() {
@@ -81,6 +84,7 @@ test("session bridges noisy release and tracking frames without breaking ink", (
   const session = new AirInkSession({
     video: { srcObject: null },
     canvas: createCanvas(),
+    liveCanvas: createCanvas(),
     cursor: { style: {}, classList: createClassList() },
     onInteractionPhase: (phase) => phases.push(phase),
     onSignatureChange: (hasSignature) => signatures.push(hasSignature),
@@ -180,6 +184,7 @@ test("session allows fast low-FPS motion but rejects a true tracking teleport", 
   const session = new AirInkSession({
     video: { srcObject: null },
     canvas: createCanvas(),
+    liveCanvas: createCanvas(),
     cursor: { style: {}, classList: createClassList() },
   });
 
@@ -205,4 +210,20 @@ test("session allows fast low-FPS motion but rejects a true tracking teleport", 
   assert.equal(session.gesture.mode, GESTURE_MODE.NEEDS_RELEASE);
   assert.equal(session.currentStroke.length, 0);
   assert.equal(session.strokes.length, 1);
+});
+
+test("inference frames are bounded without distortion or upscaling", () => {
+  assert.deepEqual(getInferenceFrameSize(1280, 720), {
+    width: 640,
+    height: 360,
+  });
+  assert.deepEqual(getInferenceFrameSize(1280, 960), {
+    width: 480,
+    height: 360,
+  });
+  assert.deepEqual(getInferenceFrameSize(320, 240), {
+    width: 320,
+    height: 240,
+  });
+  assert.equal(getInferenceFrameSize(0, 720), null);
 });

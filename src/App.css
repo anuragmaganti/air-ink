@@ -402,20 +402,22 @@ button:focus-visible {
   background: transparent;
 }
 
+.inkLive {
+  pointer-events: none;
+}
+
 .airInkCursor {
   position: absolute;
   top: 0;
   left: 0;
-  z-index: 2;
+  z-index: 4;
   width: 18px;
   height: 18px;
   opacity: 0;
   pointer-events: none;
   transform: translate3d(-40px, -40px, 0) rotate(180deg);
   transform-origin: 86.25% 25.42%;
-  transition:
-    transform 34ms linear,
-    opacity 80ms ease;
+  transition: opacity 80ms ease;
   user-select: none;
   will-change: transform;
 }

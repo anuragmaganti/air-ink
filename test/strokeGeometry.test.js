@@ -4,7 +4,34 @@ import {
   buildSignatureSvg,
   getPointDistanceCss,
   getStrokePathData,
+  IncrementalStrokeRenderer,
 } from "../src/airInk/strokeGeometry.js";
+
+function createRecordingCanvas() {
+  const calls = [];
+  const canvas = {
+    clientWidth: 1000,
+    clientHeight: 625,
+    width: 1000,
+    height: 625,
+  };
+  const context = {
+    canvas,
+    save: () => calls.push("save"),
+    restore: () => calls.push("restore"),
+    clearRect: () => calls.push("clearRect"),
+    beginPath: () => calls.push("beginPath"),
+    arc: () => calls.push("arc"),
+    fill: () => calls.push("fill"),
+    moveTo: () => calls.push("moveTo"),
+    lineTo: () => calls.push("lineTo"),
+    quadraticCurveTo: () => calls.push("quadraticCurveTo"),
+    stroke: () => calls.push("stroke"),
+  };
+
+  canvas.getContext = () => context;
+  return { canvas, calls };
+}
 
 describe("normalized stroke geometry", () => {
   test("maps the same stroke to any output size", () => {
@@ -50,5 +77,40 @@ describe("normalized stroke geometry", () => {
     assert.match(svg, /<circle cx="250\.00" cy="312\.50"/);
     assert.match(svg, /stroke-width="4\.00"/);
     assert.match(svg, /M 100\.00 125\.00 L 900\.00 500\.00/);
+  });
+});
+
+describe("incremental stroke rendering", () => {
+  test("commits only stable segments without clearing completed ink", () => {
+    const base = createRecordingCanvas();
+    const live = createRecordingCanvas();
+    const renderer = new IncrementalStrokeRenderer(base.canvas, live.canvas);
+    const stroke = [{ x: 0.1, y: 0.2 }];
+
+    renderer.startStroke([], stroke);
+    stroke.push({ x: 0.2, y: 0.3 });
+    renderer.appendPoint([], stroke);
+    stroke.push({ x: 0.3, y: 0.35 });
+    renderer.appendPoint([], stroke);
+    stroke.push({ x: 0.4, y: 0.4 });
+    renderer.appendPoint([], stroke);
+
+    assert.equal(
+      base.calls.filter((call) => call === "quadraticCurveTo").length,
+      2,
+    );
+    assert.equal(
+      base.calls.filter((call) => call === "clearRect").length,
+      0,
+    );
+    assert.ok(
+      live.calls.filter((call) => call === "clearRect").length >= 3,
+    );
+
+    renderer.finishStroke([], stroke);
+    assert.equal(
+      base.calls.filter((call) => call === "lineTo").length,
+      1,
+    );
   });
 });

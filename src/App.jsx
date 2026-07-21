@@ -48,6 +48,7 @@ const INTERACTION_COPY = {
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const liveCanvasRef = useRef(null);
   const cursorRef = useRef(null);
   const sessionRef = useRef(null);
 
@@ -68,6 +69,7 @@ function App() {
     const session = new AirInkSession({
       video: videoRef.current,
       canvas: canvasRef.current,
+      liveCanvas: liveCanvasRef.current,
       cursor: cursorRef.current,
       onModelState: ({ ready, error }) => {
         setModelReady(ready);
@@ -252,8 +254,13 @@ function App() {
 
               <canvas
                 ref={canvasRef}
-                className="ink"
+                className="ink inkBase"
                 aria-label="Signature drawing canvas"
+              />
+              <canvas
+                ref={liveCanvasRef}
+                className="ink inkLive"
+                aria-hidden="true"
               />
               <img
                 ref={cursorRef}

@@ -19,6 +19,29 @@ function formatNumber(value) {
   return value.toFixed(2);
 }
 
+function configureStrokeContext(
+  context,
+  { color = DEFAULT_STROKE_COLOR, strokeWidthCss = 2 } = {},
+) {
+  const { canvas } = context;
+  const pixelRatio =
+    canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  const strokeWidth = strokeWidthCss * pixelRatio;
+
+  context.lineWidth = strokeWidth;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = color;
+  context.fillStyle = color;
+
+  return strokeWidth;
+}
+
+function clearCanvasLayer(canvas) {
+  const context = canvas.getContext("2d");
+  context?.clearRect(0, 0, canvas.width, canvas.height);
+}
+
 export function getPointDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -46,24 +69,17 @@ export function resizeCanvasToDisplaySize(canvas, maxPixelRatio = 2) {
 export function drawStroke(
   context,
   stroke,
-  { color = DEFAULT_STROKE_COLOR, strokeWidthCss = 2 } = {},
+  options = {},
 ) {
   if (stroke.length === 0) return;
 
   const { canvas } = context;
-  const pixelRatio =
-    canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
-  const strokeWidth = strokeWidthCss * pixelRatio;
   const points = stroke.map((point) =>
     mapPoint(point, canvas.width, canvas.height),
   );
 
   context.save();
-  context.lineWidth = strokeWidth;
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.strokeStyle = color;
-  context.fillStyle = color;
+  const strokeWidth = configureStrokeContext(context, options);
 
   if (points.length === 1) {
     const [point] = points;
@@ -98,6 +114,92 @@ export function drawStroke(
   context.restore();
 }
 
+function drawQuadraticSegment(context, start, control, end, options) {
+  const { canvas } = context;
+  const mappedStart = mapPoint(start, canvas.width, canvas.height);
+  const mappedControl = mapPoint(control, canvas.width, canvas.height);
+  const mappedEnd = mapPoint(end, canvas.width, canvas.height);
+
+  context.save();
+  configureStrokeContext(context, options);
+  context.beginPath();
+  context.moveTo(mappedStart.x, mappedStart.y);
+  context.quadraticCurveTo(
+    mappedControl.x,
+    mappedControl.y,
+    mappedEnd.x,
+    mappedEnd.y,
+  );
+  context.stroke();
+  context.restore();
+}
+
+function drawLineSegment(context, start, end, options) {
+  const { canvas } = context;
+  const mappedStart = mapPoint(start, canvas.width, canvas.height);
+  const mappedEnd = mapPoint(end, canvas.width, canvas.height);
+
+  context.save();
+  configureStrokeContext(context, options);
+  context.beginPath();
+  context.moveTo(mappedStart.x, mappedStart.y);
+  context.lineTo(mappedEnd.x, mappedEnd.y);
+  context.stroke();
+  context.restore();
+}
+
+function drawStableStrokePrefix(context, stroke, options) {
+  if (stroke.length < 3) return;
+
+  const { canvas } = context;
+  const points = stroke.map((point) =>
+    mapPoint(point, canvas.width, canvas.height),
+  );
+
+  context.save();
+  configureStrokeContext(context, options);
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const nextMidpoint = midpoint(points[index], points[index + 1]);
+    context.quadraticCurveTo(
+      points[index].x,
+      points[index].y,
+      nextMidpoint.x,
+      nextMidpoint.y,
+    );
+  }
+
+  context.stroke();
+  context.restore();
+}
+
+function drawLatestStableSegment(context, stroke, options) {
+  if (stroke.length < 3) return;
+
+  const lastIndex = stroke.length - 1;
+  const control = stroke[lastIndex - 1];
+  const start =
+    stroke.length === 3
+      ? stroke[0]
+      : midpoint(stroke[lastIndex - 2], control);
+  const end = midpoint(control, stroke[lastIndex]);
+
+  drawQuadraticSegment(context, start, control, end, options);
+}
+
+function drawStrokeTail(context, stroke, options) {
+  if (stroke.length < 3) {
+    drawStroke(context, stroke, options);
+    return;
+  }
+
+  const lastPoint = stroke.at(-1);
+  const tailStart = midpoint(stroke.at(-2), lastPoint);
+  drawLineSegment(context, tailStart, lastPoint, options);
+}
+
 export function redrawCanvas(canvas, strokes, currentStroke, options) {
   const context = canvas.getContext("2d");
   if (!context) return;
@@ -109,6 +211,91 @@ export function redrawCanvas(canvas, strokes, currentStroke, options) {
   }
 
   drawStroke(context, currentStroke, options);
+}
+
+export class IncrementalStrokeRenderer {
+  constructor(canvas, liveCanvas, options = {}) {
+    this.canvas = canvas;
+    this.liveCanvas = liveCanvas ?? canvas;
+    this.options = options;
+    this.layered = this.liveCanvas !== this.canvas;
+  }
+
+  resize() {
+    const baseResized = resizeCanvasToDisplaySize(this.canvas);
+    const liveResized = this.layered
+      ? resizeCanvasToDisplaySize(this.liveCanvas)
+      : false;
+
+    return baseResized || liveResized;
+  }
+
+  clear() {
+    clearCanvasLayer(this.canvas);
+    if (this.layered) clearCanvasLayer(this.liveCanvas);
+  }
+
+  redraw(strokes, currentStroke) {
+    if (!this.layered) {
+      redrawCanvas(this.canvas, strokes, currentStroke, this.options);
+      return;
+    }
+
+    redrawCanvas(this.canvas, strokes, [], this.options);
+    clearCanvasLayer(this.liveCanvas);
+
+    const baseContext = this.canvas.getContext("2d");
+    const liveContext = this.liveCanvas.getContext("2d");
+    if (!baseContext || !liveContext) return;
+
+    drawStableStrokePrefix(baseContext, currentStroke, this.options);
+    drawStrokeTail(liveContext, currentStroke, this.options);
+  }
+
+  startStroke(strokes, currentStroke) {
+    if (!this.layered) {
+      redrawCanvas(this.canvas, strokes, currentStroke, this.options);
+      return;
+    }
+
+    clearCanvasLayer(this.liveCanvas);
+    const context = this.liveCanvas.getContext("2d");
+    if (context) drawStroke(context, currentStroke, this.options);
+  }
+
+  appendPoint(strokes, currentStroke) {
+    if (!this.layered) {
+      redrawCanvas(this.canvas, strokes, currentStroke, this.options);
+      return;
+    }
+
+    const baseContext = this.canvas.getContext("2d");
+    const liveContext = this.liveCanvas.getContext("2d");
+    if (!baseContext || !liveContext) return;
+
+    drawLatestStableSegment(baseContext, currentStroke, this.options);
+    clearCanvasLayer(this.liveCanvas);
+    drawStrokeTail(liveContext, currentStroke, this.options);
+  }
+
+  finishStroke(strokes, currentStroke) {
+    if (currentStroke.length === 0) return;
+
+    if (!this.layered) {
+      redrawCanvas(this.canvas, strokes, currentStroke, this.options);
+      return;
+    }
+
+    const context = this.canvas.getContext("2d");
+    clearCanvasLayer(this.liveCanvas);
+    if (!context) return;
+
+    if (currentStroke.length < 3) {
+      drawStroke(context, currentStroke, this.options);
+    } else {
+      drawStrokeTail(context, currentStroke, this.options);
+    }
+  }
 }
 
 export function getStrokePathData(stroke, width, height) {

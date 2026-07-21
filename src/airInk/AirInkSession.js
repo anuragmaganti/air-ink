@@ -12,13 +12,14 @@ import {
   buildSignatureSvg,
   getPointDistance,
   getPointDistanceCss,
-  redrawCanvas,
-  resizeCanvasToDisplaySize,
+  IncrementalStrokeRenderer,
 } from "./strokeGeometry.js";
 
 const MODEL_URL = "/models/hand_landmarker.task";
 const MEDIAPIPE_VERSION = "0.10.35";
 const MEDIAPIPE_WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
+const MAX_INFERENCE_WIDTH = 640;
+const MAX_INFERENCE_HEIGHT = 360;
 const STROKE_WIDTH_CSS = 2;
 const MIN_POINT_DISTANCE_CSS = 0.75;
 const MIN_TRACKING_JUMP = 0.16;
@@ -30,6 +31,48 @@ const CURSOR_HOTSPOT_X = 20.7;
 const CURSOR_HOTSPOT_Y = 6.1;
 
 const NOOP = () => {};
+
+export function getInferenceFrameSize(
+  sourceWidth,
+  sourceHeight,
+  maxWidth = MAX_INFERENCE_WIDTH,
+  maxHeight = MAX_INFERENCE_HEIGHT,
+) {
+  if (
+    !Number.isFinite(sourceWidth) ||
+    !Number.isFinite(sourceHeight) ||
+    sourceWidth <= 0 ||
+    sourceHeight <= 0
+  ) {
+    return null;
+  }
+
+  const scale = Math.min(1, maxWidth / sourceWidth, maxHeight / sourceHeight);
+
+  return {
+    width: Math.max(1, Math.round(sourceWidth * scale)),
+    height: Math.max(1, Math.round(sourceHeight * scale)),
+  };
+}
+
+async function createInferenceBitmap(video, size) {
+  const needsResize =
+    size &&
+    (size.width !== video.videoWidth || size.height !== video.videoHeight);
+
+  if (!needsResize) return createImageBitmap(video);
+
+  try {
+    return await createImageBitmap(video, {
+      resizeWidth: size.width,
+      resizeHeight: size.height,
+      resizeQuality: "medium",
+    });
+  } catch {
+    // Older implementations may support ImageBitmap without resize options.
+    return createImageBitmap(video);
+  }
+}
 
 function getAllowedTrackingJump(elapsedMs) {
   const safeElapsedSeconds =
@@ -71,6 +114,7 @@ export class AirInkSession {
   constructor({
     video,
     canvas,
+    liveCanvas,
     cursor,
     onModelState = NOOP,
     onCameraState = NOOP,
@@ -79,6 +123,7 @@ export class AirInkSession {
   }) {
     this.video = video;
     this.canvas = canvas;
+    this.liveCanvas = liveCanvas ?? canvas;
     this.cursor = cursor;
     this.onModelState = onModelState;
     this.onCameraState = onCameraState;
@@ -90,6 +135,7 @@ export class AirInkSession {
     this.workerReady = false;
     this.workerBusy = false;
     this.inFlightFrameId = null;
+    this.inFlightStartedAt = null;
     this.nextFrameId = 1;
     this.runId = 0;
     this.running = false;
@@ -107,6 +153,11 @@ export class AirInkSession {
 
     this.gesture = createGestureState();
     this.pointFilter = new OneEuroPointFilter();
+    this.strokeRenderer = new IncrementalStrokeRenderer(
+      this.canvas,
+      this.liveCanvas,
+      { strokeWidthCss: STROKE_WIDTH_CSS },
+    );
     this.hasSeenHand = false;
     this.hasHand = false;
     this.previousRawPoint = null;
@@ -117,6 +168,9 @@ export class AirInkSession {
     this.diagnostics = {
       processedFrames: 0,
       lastInferenceDuration: null,
+      lastPipelineDuration: null,
+      inferenceFrameWidth: null,
+      inferenceFrameHeight: null,
       lastPinchRatio: null,
       lastScreenPinchRatio: null,
       lastWorldPinchRatio: null,
@@ -133,10 +187,10 @@ export class AirInkSession {
     if (this.destroyed) return;
 
     this.resizeObserver = new ResizeObserver(() => {
-      if (resizeCanvasToDisplaySize(this.canvas)) this.redrawInk();
+      if (this.strokeRenderer.resize()) this.redrawInk();
     });
     this.resizeObserver.observe(this.canvas);
-    resizeCanvasToDisplaySize(this.canvas);
+    this.strokeRenderer.resize();
 
     try {
       this.worker = new Worker(new URL("./handTracker.worker.js", import.meta.url), {
@@ -223,6 +277,7 @@ export class AirInkSession {
       if (message.frameId === this.inFlightFrameId) {
         this.workerBusy = false;
         this.inFlightFrameId = null;
+        this.inFlightStartedAt = null;
       }
 
       console.error(`Hand tracking ${message.scope} error`, message.message);
@@ -242,8 +297,13 @@ export class AirInkSession {
     if (message.type !== "result") return;
 
     if (message.frameId === this.inFlightFrameId) {
+      if (this.inFlightStartedAt != null) {
+        this.diagnostics.lastPipelineDuration =
+          performance.now() - this.inFlightStartedAt;
+      }
       this.workerBusy = false;
       this.inFlightFrameId = null;
+      this.inFlightStartedAt = null;
     }
 
     if (!this.running || message.runId !== this.runId) return;
@@ -330,7 +390,7 @@ export class AirInkSession {
     if (transition.action === GESTURE_ACTION.START) {
       this.currentStroke = [point];
       this.syncHasSignature();
-      this.redrawInk();
+      this.strokeRenderer.startStroke(this.strokes, this.currentStroke);
     } else if (transition.action === GESTURE_ACTION.MOVE) {
       const lastPoint = this.currentStroke.at(-1);
       const width = this.canvas.clientWidth;
@@ -342,7 +402,7 @@ export class AirInkSession {
           MIN_POINT_DISTANCE_CSS
       ) {
         this.currentStroke.push(point);
-        this.redrawInk();
+        this.strokeRenderer.appendPoint(this.strokes, this.currentStroke);
       }
     } else if (transition.action === GESTURE_ACTION.END) {
       this.finishCurrentStroke();
@@ -413,16 +473,16 @@ export class AirInkSession {
   }
 
   redrawInk() {
-    redrawCanvas(this.canvas, this.strokes, this.currentStroke, {
-      strokeWidthCss: STROKE_WIDTH_CSS,
-    });
+    this.strokeRenderer.redraw(this.strokes, this.currentStroke);
   }
 
   finishCurrentStroke() {
-    if (this.currentStroke.length > 0) this.strokes.push(this.currentStroke);
+    if (this.currentStroke.length > 0) {
+      this.strokeRenderer.finishStroke(this.strokes, this.currentStroke);
+      this.strokes.push(this.currentStroke);
+    }
     this.currentStroke = [];
     this.syncHasSignature();
-    this.redrawInk();
   }
 
   scheduleNextFrame() {
@@ -462,16 +522,28 @@ export class AirInkSession {
     this.workerBusy = true;
     const runId = this.runId;
     const frameId = this.nextFrameId;
+    const captureStartedAt = performance.now();
     this.nextFrameId += 1;
     this.inFlightFrameId = frameId;
+    this.inFlightStartedAt = captureStartedAt;
 
-    createImageBitmap(this.video)
+    const inferenceSize = getInferenceFrameSize(
+      this.video.videoWidth,
+      this.video.videoHeight,
+    );
+    const bitmapPromise = createInferenceBitmap(this.video, inferenceSize);
+
+    bitmapPromise
       .then((bitmap) => {
+        this.diagnostics.inferenceFrameWidth = bitmap.width;
+        this.diagnostics.inferenceFrameHeight = bitmap.height;
+
         if (this.destroyed || !this.running || runId !== this.runId) {
           bitmap.close();
           if (frameId === this.inFlightFrameId) {
             this.workerBusy = false;
             this.inFlightFrameId = null;
+            this.inFlightStartedAt = null;
           }
           return;
         }
@@ -496,6 +568,7 @@ export class AirInkSession {
         if (frameId === this.inFlightFrameId) {
           this.workerBusy = false;
           this.inFlightFrameId = null;
+          this.inFlightStartedAt = null;
         }
         console.error("Unable to capture a camera frame", error);
         if (runId === this.runId) {
@@ -638,7 +711,7 @@ export class AirInkSession {
     this.strokes = [];
     this.currentStroke = [];
     this.syncHasSignature();
-    this.redrawInk();
+    this.strokeRenderer.clear();
 
     if (this.cameraOn && this.hasHand) {
       this.gesture = requireGestureRelease();

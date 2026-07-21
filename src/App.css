@@ -402,6 +402,32 @@ button:focus-visible {
   background: transparent;
 }
 
+.airInkCursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-40px, -40px, 0) rotate(180deg);
+  transform-origin: 86.25% 25.42%;
+  transition:
+    transform 34ms linear,
+    opacity 80ms ease;
+  user-select: none;
+  will-change: transform;
+}
+
+.airInkCursor.isVisible {
+  opacity: 0.92;
+}
+
+.airInkCursor.isDrawing {
+  opacity: 1;
+}
+
 .actionDock {
   min-height: 78px;
   justify-content: flex-end;

@@ -184,13 +184,14 @@ button:focus-visible {
 .introPanel {
   grid-area: intro;
   align-self: end;
+  container-type: inline-size;
   padding: 8px clamp(2px, 0.8vw, 12px) 4px;
 }
 
 .heroTitle {
   max-width: none;
   margin: 0;
-  font-size: clamp(3.45rem, 5vw, 4.8rem);
+  font-size: clamp(3.25rem, 17.5cqi, 4.8rem);
   font-weight: 650;
   letter-spacing: -0.068em;
   line-height: 0.92;
@@ -651,7 +652,7 @@ button:focus-visible {
   }
 
   .heroTitle {
-    font-size: clamp(3.25rem, 4.8vw, 4.5rem);
+    font-size: clamp(3rem, 16.5cqi, 4.5rem);
   }
 
   .cameraPanel {
@@ -688,26 +689,28 @@ button:focus-visible {
   }
 
   .workspace {
-    --workspace-column-gap: 0px;
+    --workspace-column-gap: 24px;
     --workspace-row-gap: 24px;
     --workspace-top-space: 32px;
     min-height: auto;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      "intro"
-      "camera"
-      "stage";
-    grid-template-rows: auto auto auto;
+      "intro camera"
+      "stage stage";
+    grid-template-rows: auto auto;
   }
 
   .introPanel {
     width: 100%;
+    align-self: center;
+    container-type: inline-size;
     padding-bottom: 6px;
   }
 
   .heroTitle {
     max-width: none;
-    font-size: clamp(3.5rem, 8.5vw, 5.25rem);
+    font-size: clamp(3.75rem, 20cqi, 5.5rem);
+    text-wrap: balance;
   }
 
   .heroLine {
@@ -721,8 +724,8 @@ button:focus-visible {
   }
 
   .cameraPanel {
-    width: min(100%, 520px);
-    justify-self: center;
+    width: 100%;
+    justify-self: stretch;
   }
 
   .canvasPrompt {
@@ -799,16 +802,26 @@ button:focus-visible {
   }
 
   .introPanel {
+    align-self: stretch;
     padding: 4px 2px;
   }
 
   .heroTitle {
-    max-width: 9ch;
-    font-size: clamp(3.25rem, 16vw, 4.5rem);
+    max-width: none;
+    font-size: clamp(1.75rem, 9.5cqi, 4.25rem);
+    text-align: center;
+    white-space: nowrap;
+    text-wrap: nowrap;
   }
 
   .heroLine {
     display: inline;
+    white-space: inherit;
+  }
+
+  .cameraPanel {
+    width: min(100%, 520px);
+    justify-self: center;
   }
 
   .drawingSurface {

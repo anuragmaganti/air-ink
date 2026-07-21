@@ -1,103 +1,155 @@
-# Air Ink
+<p align="center">
+  <img src="public/favicon.svg" alt="Air Ink logo" width="88" height="88" />
+</p>
 
-Air Ink is an in-browser signature studio. A webcam tracks one hand, a thumb-to-index pinch controls pen down and pen up, and movement of the index fingertip becomes a downloadable SVG signature.
+<h1 align="center">Air Ink</h1>
 
-## Runtime architecture
+<p align="center">
+  A browser-based gesture signature studio that turns hand movement into a crisp, downloadable SVG.
+</p>
 
-The interaction is split into four layers instead of keeping camera, model, gesture, and drawing logic in the React component:
+<p align="center">
+  <a href="https://webcamsign.com/"><strong>Try Air Ink</strong></a>
+</p>
 
-1. `src/airInk/handTracker.worker.js` owns MediaPipe initialization, synchronous inference, and landmark-to-pointer measurement in a Web Worker.
-2. `src/airInk/gestureEngine.js` turns landmarks into a pinch ratio, filtered pointer position, and deterministic gesture state.
-3. `src/airInk/AirInkSession.js` owns camera lifecycle, video-frame scheduling, gesture-to-stroke behavior, cursor presentation, and cleanup.
-4. `src/airInk/strokeGeometry.js` renders normalized strokes to Canvas and builds equivalent SVG paths.
+Air Ink uses a webcam and real-time hand tracking to make signing feel physical without requiring a touchscreen or stylus. Touching the thumb and index finger together puts ink down, moving the index finger draws, and releasing the pinch lifts the pen.
 
-React only receives low-frequency UI state: model readiness, camera state, interaction copy, errors, signature availability, and export feedback. Per-frame landmarks and points do not cause React renders.
+## Features
 
-## Model and inference
+### Gesture Drawing
 
-- Package: `@mediapipe/tasks-vision` 0.10.35.
-- Model: Google's float16 Hand Landmarker v1 task, stored locally at `public/models/hand_landmarker.task`.
-- Output: 21 normalized image landmarks, 21 world landmarks in meters, and handedness for one hand.
-- Confidence configuration: MediaPipe's `0.5` defaults for detection, hand presence, and tracking.
-- Camera preference: user-facing, 1280x720, 16:9, and up to an ideal 60 FPS. These are non-mandatory constraints, so the browser can select a supported fallback.
+- Tracks one hand from a live, mirrored camera preview.
+- Uses a thumb-to-index pinch for pen down and pen up.
+- Uses the index fingertip as the pointer, keeping position separate from the pinch gesture.
+- Preserves a stroke through brief tracking noise instead of ending it after one missed frame.
+- Shows contextual guidance for camera access, hand placement, drawing, and recovery.
 
-`requestVideoFrameCallback` schedules work from actual decoded camera frames. The visible preview keeps the camera's selected resolution, while the inference bitmap is proportionally reduced to fit within `640x360` and is never upscaled. Only one frame can be in flight, so slow inference drops intermediate frames instead of building a stale queue. The MediaPipe worker uses the module WASM loader and keeps synchronous `detectForVideo` calls off the UI thread.
+### Signature Studio
 
-MediaPipe still evaluates all landmarks, but the worker does not clone and return both 21-point arrays. It computes the pointer, pinch ratios, and handedness beside the model, then transfers one seven-value `Float64Array` to the main thread. The fixed packet is 56 bytes and retains JavaScript numeric precision for threshold comparisons.
+- Draws smooth, responsive strokes on a dedicated signature stage.
+- Keeps the quill pointer visible across the full drawing surface.
+- Clears the current signature without restarting the camera.
+- Downloads the finished signature as a scalable SVG with matching Canvas geometry.
+- Adapts the workspace across desktop, tablet, and mobile layouts.
 
-The model file is local. MediaPipe's versioned WASM runtime is fetched from jsDelivr; camera frames are transferred only from the page to the same-origin worker and are not uploaded.
+### Private By Design
 
-## Pinch behavior
+- Processes camera frames inside the browser rather than uploading video to a server.
+- Stores signature points only in memory for the current page session.
+- Requires no account, backend, database, or environment variables.
+- Ships the Hand Landmarker model with the app.
 
-Pinch detection measures the visible distance between thumb tip landmark `4` and index tip landmark `8`. Image-space `x` is corrected for the camera aspect ratio before distance is measured, so a horizontal gap and vertical gap have comparable physical meaning on a 16:9 frame. MediaPipe world landmarks remain in diagnostics and act as a fallback only if image landmarks are invalid; monocular depth estimates do not gate the interaction.
+## How The App Works
 
-The normalized signal is:
-
-```text
-pinch ratio = distance(thumb tip 4, index tip 8)
-              / mean(distance(index MCP 5, pinky MCP 17),
-                     distance(wrist 0, middle MCP 9))
-```
-
-The palm-size denominator makes the signal stable as the hand moves toward or away from the camera.
-
-- Pen-down candidate at a ratio of `0.30` or lower.
-- Pen-up candidate at a ratio of `0.46` or higher.
-- Values between those thresholds preserve the current state.
-
-This is a Schmitt-trigger style hysteresis rule with time-based confirmation rather than frame counts:
-
-- Contact must remain below the pen-down threshold for `20ms` before a stroke starts.
-- Release must remain above the pen-up threshold for `32ms` before the stroke ends.
-- Ink freezes during release confirmation, preventing an opening hand from adding a tail.
-- A missing or invalid hand result pauses the stroke for up to `100ms`; reacquisition within that window continues the same stroke.
-- Rearming after loss, Clear, or a tracking jump requires a visibly open pinch for `40ms`.
-
-These windows are long enough to reject one noisy inference result while staying below a perceptible click delay. They are based on elapsed media timestamps, so behavior is consistent at different inference frame rates.
-
-Once confirmation begins, ratios in the middle hysteresis band keep accumulating evidence. Only a clear opposite gesture cancels the candidate. This prevents small landmark oscillations from repeatedly restarting the timer.
-
-The gesture state machine is:
+1. A Web Worker initializes MediaPipe's Hand Landmarker model while the interface remains responsive.
+2. After camera permission is granted, Air Ink schedules work from decoded video frames instead of polling the video element blindly.
+3. Each frame is converted to an aspect-preserving `ImageBitmap` sized for inference and transferred to the worker.
+4. MediaPipe finds the hand landmarks. The worker reduces that result to a compact packet containing the pointer, pinch measurements, and handedness.
+5. A gesture state machine turns the thumb-to-index distance into stable pen-down and pen-up actions.
+6. The filtered index-fingertip position is stored as normalized stroke points and rendered incrementally to Canvas.
+7. Export rebuilds the same smoothed geometry as SVG, so the downloaded signature matches the preview.
 
 ```text
-no hand -> needs release -> ready -> drawing
-    ^          |             ^          |
-    |          +-- open -----+-- release+
-    +---- sustained tracking loss -------+
-                                  |
-                       brief loss +-> drawing paused
+Webcam frame
+    -> inference-sized ImageBitmap
+    -> MediaPipe Web Worker
+    -> compact tracking packet
+    -> gesture state machine + pointer filter
+    -> incremental Canvas renderer
+    -> SVG export
 ```
 
-After tracking loss, a jump, or Clear, the user must visibly open the pinch before drawing again. This prevents a still-pinched reacquired hand from drawing a long connection across the canvas.
+## Key Decisions
 
-## Pointer and stroke quality
+### Keep Real-Time Work Outside React
 
-The index fingertip is the pen position. The thumb only controls the pinch. This avoids the old behavior where opening the thumb moved a thumb/index midpoint and produced trailing ink during release.
+Camera frames, landmarks, gesture state, and stroke points change too frequently to belong in React state. `AirInkSession` owns that imperative loop, while React receives only user-facing state such as model readiness, camera status, errors, and whether a signature exists. This avoids a component render for every tracked frame.
 
-Pointer coordinates use a One Euro filter tuned with a `6` minimum cutoff, `2.5` speed coefficient, and `1.5` derivative cutoff. It still suppresses near-rest landmark noise but follows intentional movement more aggressively than the original filter. Pinch detection bypasses this filter, so pointer polish cannot delay pen up. Cursor transforms are applied immediately rather than animated toward each sample.
+### Run Inference In A Web Worker
 
-Additional safeguards:
+MediaPipe inference is synchronous, so running it on the main thread would compete with input, layout, and painting. Air Ink transfers frames to a worker and allows only one inference request at a time. If the model is still busy, intermediate frames are skipped rather than queued, preventing an increasingly delayed pointer.
 
-- Mirrored `x` coordinates match the mirrored camera preview.
-- Points are stored from `0..1`, independent of Canvas pixel dimensions.
-- Samples closer than `0.75` displayed pixels are ignored to suppress stationary jitter and duplicate points.
-- Tracking-jump tolerance grows from `0.16` to at most `0.38` normalized units based on elapsed frame time. This permits legitimate fast motion at low FPS while still rejecting a one-frame teleport.
-- Canvas resolution follows its displayed size and device pixel ratio, capped at 2x for a quality/performance balance.
-- Two stacked canvases render ink incrementally. Stable quadratic segments are committed once to the base layer; only the short provisional tail is cleared and redrawn for each point. Resize remains a safe full-redraw path from normalized stroke data.
-- Canvas and SVG use the same quadratic smoothing geometry, round caps, round joins, and CSS-equivalent stroke width.
-- The quill cursor is a separate compositor layer, so hover movement does not clear and redraw all historical ink.
+### Separate Preview Quality From Inference Cost
 
-## Failure and cleanup behavior
+The visible camera keeps the resolution selected by the browser. The inference copy is reduced only when necessary to fit within a `640x360` budget, preserves the source aspect ratio, and is never upscaled. The user keeps a clear preview while the model processes fewer pixels and avoids wasting work on low-resolution cameras.
 
-- Brief hand loss: pause point collection and keep the current stroke alive for `100ms`.
-- Sustained hand loss: end the stroke, hide the cursor, and require an open pinch after reacquisition.
-- Tracking reacquisition: require an open pinch before rearming.
-- Camera stop or stream end: cancel frame callbacks, finalize the stroke, stop media tracks, reset gesture state, and preserve completed ink.
-- Worker frame failure: stop the camera and expose a retryable error.
-- Resize: resize the backing Canvas and redraw normalized strokes without changing their geometry.
-- Clear while pinched: clear ink and require release before another stroke can begin.
+### Treat A Pinch As State, Not A Single-Frame Event
 
-## Verification
+The pinch distance is normalized against palm size, so the gesture behaves consistently as the hand moves toward or away from the camera. Separate start and release thresholds, short time-based confirmation, and a brief tracking-loss grace period absorb landmark jitter without making one bad frame break a stroke. After a clear, large tracking jump, or sustained hand loss, the gesture must visibly open before it can draw again; this prevents accidental connector lines.
+
+### Filter Position Without Delaying Pen Up
+
+A responsive One Euro filter smooths the index-fingertip path while preserving fast movement. Pinch detection bypasses that position filter, so visual smoothing cannot delay the moment the pen lifts. The thumb controls contact only; it does not influence pointer position and cannot pull the end of a line as the hand opens.
+
+### Preserve One Geometry Model
+
+Stroke points are stored in normalized coordinates, which keeps drawings stable across responsive Canvas sizes and high-density displays. Two stacked canvases separate committed ink from the short live tail, so each new sample does not redraw the full signature. Canvas and SVG share the same quadratic smoothing rules, round caps, joins, and relative stroke width.
+
+## Tech Stack
+
+| Area | Technology |
+| --- | --- |
+| Interface | React 19, JavaScript, CSS |
+| Build tooling | Vite 8 |
+| Hand tracking | MediaPipe Tasks Vision |
+| Camera | WebRTC `getUserMedia` |
+| Concurrency | Web Workers, transferable `ImageBitmap` and typed-array packets |
+| Drawing and export | HTML Canvas, SVG |
+| UI icons | Phosphor Icons |
+| Analytics | Vercel Analytics |
+
+## Project Structure
+
+```text
+public/
+  models/hand_landmarker.task     Local MediaPipe model
+src/
+  App.jsx                         Interface and user-facing state
+  App.css                         Responsive visual system
+  airInk/
+    AirInkSession.js              Camera, inference, cursor, and stroke lifecycle
+    gestureEngine.js              Pinch state machine, measurements, and filtering
+    handTracker.worker.js         MediaPipe initialization and inference
+    trackingPacket.js             Compact worker-to-main-thread result format
+    strokeGeometry.js             Incremental Canvas rendering and SVG generation
+test/
+  AirInkSession.test.js           Session and inference-pipeline behavior
+  gestureEngine.test.js           Gesture detection and pointer filtering
+  strokeGeometry.test.js          Drawing and export geometry
+```
+
+## Getting Started
+
+### Prerequisites
+
+- A current Node.js LTS release
+- npm
+- A webcam-enabled browser
+
+### Installation
+
+```bash
+git clone https://github.com/anuragmaganti/signature-webcam-draw.git
+cd signature-webcam-draw
+npm install
+npm run dev
+```
+
+Open the local URL shown by Vite, start the camera, and allow browser camera access. No application environment variables or external backend services are required.
+
+## Scripts
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the Vite development server |
+| `npm run build` | Create the production build in `dist/` |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run ESLint across the project |
+| `npm test` | Run the Node test suite |
+
+## Testing
+
+The automated suite covers gesture confirmation, noisy releases, brief and sustained tracking loss, release-to-rearm behavior, pinch measurement, pointer filtering, inference-frame sizing, compact worker packets, tracking-jump handling, incremental Canvas rendering, and SVG geometry.
 
 ```bash
 npm test
@@ -105,16 +157,8 @@ npm run lint
 npm run build
 ```
 
-The Node tests cover stable pinch confirmation, one-frame false release, brief and sustained tracking loss, safe rearming, visible thumb/index measurement, world-landmark fallback, the fixed transferable tracking packet, responsive point filtering, bounded aspect-preserving inference frames, incremental canvas commits, FPS-aware motion continuity, teleport rejection, normalized path geometry, CSS-pixel sampling, and SVG output.
+## Privacy And Deployment
 
-Automated tests cannot establish the ideal thresholds for every webcam, hand shape, angle, and lighting condition. Final calibration should record real sessions and compare pinch ratio, inference time, false starts, false releases, and end-of-stroke overshoot before changing the constants.
+Camera frames are transferred only between the page and its worker and are not sent to an Air Ink backend. Signatures remain in browser memory unless the user downloads the SVG. The model file is served locally with the application; MediaPipe's version-pinned WebAssembly runtime is loaded from jsDelivr. Vercel Analytics provides page-level usage analytics and does not receive custom camera, landmark, or signature data from the app.
 
-## Tech stack
-
-- React 19 and Vite
-- MediaPipe Tasks Vision
-- Web Workers and transferable `ImageBitmap` frames
-- WebRTC `getUserMedia`
-- HTML Canvas and SVG
-- Phosphor Icons
-- Vercel Analytics
+The production app is available at [webcamsign.com](https://webcamsign.com/). Air Ink builds to static assets in `dist/` and can be served by any static host. Production hosting must use HTTPS because browsers restrict webcam access on insecure origins.

@@ -1,4 +1,4 @@
-<h1 align="center"><img src="public/favicon.svg" alt="Air Ink logo" width="52" height="52" /> Air Ink</h1>
+<h1 align="center"><img src="public/favicon.svg" alt="Air Ink logo" width="32" height="32" /> Air Ink</h1>
 
 <p align="center">
   <a href="https://webcamsign.com/"><strong>Try Air Ink</strong></a>

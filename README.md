@@ -1,15 +1,11 @@
-<p align="center">
-  <img src="public/favicon.svg" alt="Air Ink logo" width="88" height="88" />
-</p>
-
-<h1 align="center">Air Ink</h1>
-
-<p align="center">
-  A browser-based gesture signature studio that turns hand movement into a crisp, downloadable SVG.
-</p>
+<h1 align="center"><img src="public/favicon.svg" alt="Air Ink logo" width="52" height="52" /> Air Ink</h1>
 
 <p align="center">
   <a href="https://webcamsign.com/"><strong>Try Air Ink</strong></a>
+</p>
+
+<p align="center">
+  A browser-based gesture signature studio that turns hand movement into a crisp, downloadable SVG.
 </p>
 
 Air Ink uses a webcam and real-time hand tracking to make signing feel physical without requiring a touchscreen or stylus. Touching the thumb and index finger together puts ink down, moving the index finger draws, and releasing the pinch lifts the pen.

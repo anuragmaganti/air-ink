@@ -698,7 +698,10 @@ function App() {
       <main className="workspace">
         <section className="introPanel" aria-labelledby="page-title">
           <h1 id="page-title" className="heroTitle">
-            Your hand is the <em>pen.</em>
+            <span className="heroLine">Your hand is</span>{" "}
+            <span className="heroLine">
+              the <em>pen.</em>
+            </span>
           </h1>
         </section>
 
@@ -778,29 +781,31 @@ function App() {
         </section>
 
         <section className="stage" aria-label="Signature stage">
-          <div className="drawingSurface">
-            <div className="signatureGuide">
-              <div className="signatureGuideLabel">Sign here</div>
-              <div className="signatureGuideLine" />
-            </div>
-
-            {showCanvasPrompt ? (
-              <div className="canvasPrompt" role="status" aria-live="polite">
-                <div className="gestureIcon" aria-hidden="true">
-                  <HandGrabbing size={36} weight="duotone" />
-                </div>
-                <div>
-                  <h3>{modelError ? "The canvas needs the tracker" : status.title}</h3>
-                  <p>{modelError || status.detail}</p>
-                </div>
+          <div className="stageBody">
+            <div className="drawingSurface">
+              <div className="signatureGuide">
+                <div className="signatureGuideLabel">Sign here</div>
+                <div className="signatureGuideLine" />
               </div>
-            ) : null}
 
-            <canvas
-              ref={canvasRef}
-              className="ink"
-              aria-label="Signature drawing canvas"
-            />
+              {showCanvasPrompt ? (
+                <div className="canvasPrompt" role="status" aria-live="polite">
+                  <div className="gestureIcon" aria-hidden="true">
+                    <HandGrabbing size={36} weight="duotone" />
+                  </div>
+                  <div>
+                    <h3>{modelError ? "The canvas needs the tracker" : status.title}</h3>
+                    <p>{modelError || status.detail}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              <canvas
+                ref={canvasRef}
+                className="ink"
+                aria-label="Signature drawing canvas"
+              />
+            </div>
           </div>
 
           <div className="actionDock">

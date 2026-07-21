@@ -77,23 +77,36 @@ button:focus-visible {
   gap: 24px;
 }
 
-.topbar::after {
-  content: "";
+.topbarDivider {
   position: absolute;
   right: 0;
-  bottom: 0;
+  bottom: -3px;
   left: 0;
-  height: 1px;
+  width: 100%;
+  height: 8px;
+  overflow: visible;
+  color: var(--accent);
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 90, 54, 0.72) 4%,
-    var(--accent) 9%,
-    var(--accent) 91%,
-    rgba(255, 90, 54, 0.72) 96%,
-    transparent 100%
-  );
+}
+
+.topbarDividerShapeMobile {
+  display: none;
+}
+
+.topbarDividerStroke {
+  fill: none;
+  stroke: url("#topbar-divider-gradient");
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.topbarDividerStrokeMain {
+  stroke-width: 1.4;
+}
+
+.topbarDividerStrokeTexture {
+  stroke-width: 0.8;
+  opacity: 0.42;
 }
 
 .brand,
@@ -846,12 +859,18 @@ button:focus-visible {
 
   .topbar {
     min-height: 68px;
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "brand privacy"
-      "statement statement";
-    gap: 12px 20px;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "brand statement";
+    gap: clamp(14px, 4.5vw, 22px);
     padding: 14px 0;
+  }
+
+  .topbarDividerShapeWide {
+    display: none;
+  }
+
+  .topbarDividerShapeMobile {
+    display: inline;
   }
 
   .brand {
@@ -860,11 +879,11 @@ button:focus-visible {
 
   .headerStatement {
     grid-area: statement;
-    width: min(100%, 46ch);
-    padding-left: 14px;
-    justify-self: start;
-    font-size: 13px;
-    line-height: 1.4;
+    width: 100%;
+    padding-left: clamp(10px, 3vw, 14px);
+    justify-self: stretch;
+    font-size: clamp(10px, 2.8vw, 12px);
+    line-height: 1.35;
     white-space: normal;
   }
 
@@ -878,11 +897,7 @@ button:focus-visible {
   }
 
   .privacyNote {
-    grid-area: privacy;
-    max-width: 15ch;
-    font-size: 11px;
-    line-height: 1.25;
-    white-space: normal;
+    display: none;
   }
 
   .workspace {

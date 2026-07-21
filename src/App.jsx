@@ -45,6 +45,51 @@ const INTERACTION_COPY = {
   },
 };
 
+function HeaderDivider() {
+  return (
+    <svg
+      className="topbarDivider"
+      viewBox="0 0 1000 8"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="topbar-divider-gradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0" />
+          <stop offset="4%" stopColor="currentColor" stopOpacity="0.32" />
+          <stop offset="9%" stopColor="currentColor" stopOpacity="0.56" />
+          <stop offset="91%" stopColor="currentColor" stopOpacity="0.56" />
+          <stop offset="96%" stopColor="currentColor" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      <g className="topbarDividerShape topbarDividerShapeWide">
+        <path
+          className="topbarDividerStroke topbarDividerStrokeMain"
+          d="M0 4.1 C55 4 79 3.1 121 3.7 C170 4.6 201 5.1 249 4.2 C299 3.2 335 3.1 383 4 C439 5 469 4.8 521 3.9 C572 3 609 3.4 657 4.2 C706 5 743 4.7 791 3.9 C843 3.2 884 3.6 923 4.2 C955 4.6 979 4.2 1000 4"
+        />
+        <path
+          className="topbarDividerStroke topbarDividerStrokeTexture"
+          d="M0 5 C61 4.8 88 4 132 4.4 C179 5 212 5.6 260 4.8 C309 4 348 3.8 396 4.6 C450 5.4 484 5.3 534 4.5 C584 3.7 622 4 670 4.8 C719 5.5 756 5.2 804 4.5 C855 3.8 895 4.1 935 4.7 C963 5.1 983 4.8 1000 4.7"
+        />
+      </g>
+
+      <g className="topbarDividerShape topbarDividerShapeMobile">
+        <path
+          className="topbarDividerStroke topbarDividerStrokeMain"
+          d="M0 4.1 C111 2.9 177 5.1 282 4 C392 2.8 472 5 578 3.9 C691 2.9 777 5 877 4.1 C927 3.7 967 4.2 1000 4"
+        />
+        <path
+          className="topbarDividerStroke topbarDividerStrokeTexture"
+          d="M0 5 C116 3.8 185 5.8 289 4.8 C399 3.7 480 5.7 585 4.7 C699 3.7 785 5.7 884 4.9 C932 4.5 970 5 1000 4.8"
+        />
+      </g>
+    </svg>
+  );
+}
+
 function HeroScribble() {
   return (
     <svg
@@ -190,6 +235,7 @@ function App() {
           <ShieldCheck size={18} weight="bold" aria-hidden="true" />
           <span>Video stays on your device</span>
         </div>
+        <HeaderDivider />
       </header>
 
       <main className="workspace">

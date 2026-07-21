@@ -129,8 +129,8 @@ test/
 ### Installation
 
 ```bash
-git clone https://github.com/anuragmaganti/signature-webcam-draw.git
-cd signature-webcam-draw
+git clone https://github.com/anuragmaganti/air-ink.git
+cd air-ink
 npm install
 npm run dev
 ```

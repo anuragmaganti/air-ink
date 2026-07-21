@@ -1,0 +1,31 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic "Air Ink home" [ref=e5]: Air Ink
+    - paragraph [ref=e10]:
+      - text: Air Ink uses your webcam to turn your
+      - strong [ref=e11]: hand movement
+      - text: into a crisp, downloadable signature.
+    - generic [ref=e12]: Video stays on your device
+  - main [ref=e16]:
+    - region [ref=e17]:
+      - heading "Your hand is the pen." [level=1] [ref=e18]:
+        - generic [ref=e19]: Your hand is
+        - generic [ref=e20]:
+          - text: the
+          - emphasis [ref=e21]: pen.
+    - region "Camera controls" [ref=e22]:
+      - generic [ref=e23]:
+        - generic "Mirrored live camera preview" [ref=e24]
+        - generic [ref=e25]: Loading hand tracking
+      - button "Loading tracker" [disabled] [ref=e29]
+    - region "Signature stage" [ref=e32]:
+      - generic [ref=e34]:
+        - generic: Sign here
+        - status:
+          - generic:
+            - heading "Warming up the ink" [level=3]
+            - paragraph: The gesture engine is loading in your browser.
+        - generic "Signature drawing canvas" [ref=e35]
+      - generic [ref=e36]:
+        - button "Clear" [disabled] [ref=e37]
+        - button "Download SVG" [disabled] [ref=e40]

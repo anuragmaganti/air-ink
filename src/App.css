@@ -68,12 +68,31 @@ button:focus-visible {
 }
 
 .topbar {
+  position: relative;
   min-height: 74px;
   display: grid;
   grid-template-columns: auto minmax(260px, 1fr) auto;
   align-items: center;
   gap: 24px;
-  border-bottom: 1px solid rgba(29, 28, 25, 0.12);
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 90, 54, 0.72) 4%,
+    var(--accent) 9%,
+    var(--accent) 91%,
+    rgba(255, 90, 54, 0.72) 96%,
+    transparent 100%
+  );
 }
 
 .brand,

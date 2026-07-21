@@ -223,13 +223,15 @@ function App() {
       <header className="topbar">
         <div className="brand" aria-label="Air Ink home">
           <span className="brandMark" aria-hidden="true">
-            <PenNib size={20} weight="fill" />
+            <PenNib size={24} weight="fill" />
           </span>
           <div className="brandName">Air Ink</div>
         </div>
         <p className="headerStatement">
-          Air Ink uses your webcam to turn your <strong>hand movement</strong> into a{" "}
-          <span className="statementFinish">crisp, downloadable signature.</span>
+          <span className="headerStatementText">
+            Air Ink uses your webcam to turn your <strong>hand movement</strong> into a{" "}
+            <span className="statementFinish">crisp, downloadable signature.</span>
+          </span>
         </p>
         <div className="privacyNote">
           <ShieldCheck size={18} weight="bold" aria-hidden="true" />

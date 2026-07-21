@@ -151,7 +151,10 @@ button:focus-visible {
 .headerStatement {
   position: relative;
   width: auto;
+  min-height: 2.7em;
   margin: 0;
+  display: flex;
+  align-items: center;
   padding-left: 18px;
   justify-self: start;
   color: var(--ink);
@@ -162,6 +165,10 @@ button:focus-visible {
   text-align: left;
   text-wrap: balance;
   white-space: nowrap;
+}
+
+.headerStatementText {
+  min-width: 0;
 }
 
 .headerStatement::before {
@@ -912,13 +919,14 @@ button:focus-visible {
   }
 
   .introPanel {
+    --mobile-hero-size: clamp(1.75rem, 9.5cqi, 4.25rem);
     align-self: stretch;
     padding: 4px 2px;
   }
 
   .heroTitle {
     max-width: none;
-    font-size: clamp(1.75rem, 9.5cqi, 4.25rem);
+    font-size: var(--mobile-hero-size);
     text-align: center;
     white-space: nowrap;
     text-wrap: nowrap;
@@ -930,8 +938,9 @@ button:focus-visible {
   }
 
   .heroScribble {
-    width: min(78%, 290px);
+    width: min(9.3em, 100%);
     height: clamp(26px, 9cqi, 34px);
+    font-size: var(--mobile-hero-size);
     margin: 5px auto 0;
   }
 
